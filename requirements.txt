@@ -1,0 +1,5 @@
+nltk==3.2.1
+numpy==1.11.0
+protobuf==3.0.0b2
+six==1.10.0
+tensorflow==0.8.0

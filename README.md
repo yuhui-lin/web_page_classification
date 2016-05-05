@@ -2,7 +2,7 @@ This repository contains Deep learning algorithms for web page classification wr
 
 ## Requirements
 ```
-mkvirtualenv --python=`which python3` wpc
+mkvirtualenv --python=`which python3` --system-site-packages wpc
 pip install -r requirements.txt
 ```
 - Python 3.2+
@@ -11,6 +11,12 @@ pip install -r requirements.txt
 - [NLTK 3.0](http://www.nltk.org/install.html)
 
 ## Running
+```
+python -m collect --data_dir ~/Downloads/wpc
+```
 
 
 ## Modules
+
+## License
+MIT

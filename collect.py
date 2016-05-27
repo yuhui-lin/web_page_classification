@@ -13,6 +13,9 @@ from collections import Counter
 import xml.sax
 import time
 import json
+import logging
+from GoogleScraper import scrape_with_config, GoogleSearchError
+import concurrent.futures
 
 #########################################
 # FLAGS
@@ -22,10 +25,19 @@ PARSER.add_argument("--data_dir",
                     type=str,
                     default="data/",
                     help="path of data directory.")
+# CAT_FETCH is subset of CATEGORIES, only fetch those cats
+PARSER.add_argument("--cat_fetch",
+                    type=str,
+                    default="Arts, Business, Computers, Health",
+                    help="cats to be print")
 PARSER.add_argument("--pages_per_file",
                     type=int,
-                    default=100,
+                    default=5000,
                     help="number of web pages per json file")
+PARSER.add_argument("--max_file_num",
+                    type=int,
+                    default=-1,
+                    help="max num of files per cat, -1 for no limit")
 PARSER.add_argument("--max_workers",
                     type=int,
                     default=8,
@@ -34,6 +46,18 @@ PARSER.add_argument("--fetch_timeout",
                     type=int,
                     default=10,
                     help="max seconds to fetch a web page")
+PARSER.add_argument("--max_neighbor",
+                    type=int,
+                    default=15,
+                    help="max # for every kinds of neighbors")
+PARSER.add_argument("--max_child",
+                    type=int,
+                    default=20,
+                    help="max # for children")
+PARSER.add_argument("--max_html_length",
+                    type=int,
+                    default=512,
+                    help="max length of each neighbors html length")
 FLAGS = PARSER.parse_args()
 
 #########################################
@@ -67,10 +91,10 @@ def maybe_download(data_dir, s_name, s_url):
     data_dir = os.path.expanduser(data_dir)
     if not os.path.isdir(data_dir):
         os.mkdir(data_dir)
-        print("created data_dir:", data_dir)
+        logging.info("created data_dir: {}".format(data_dir))
 
     s_packed = os.path.join(data_dir, s_name)
-    print("source path:", s_packed)
+    logging.info("source path: " + s_packed)
     # split twice for .tar.**
     s_dir, s_ext = os.path.splitext(s_packed)
     if s_dir.endswith(".tar"):
@@ -80,24 +104,24 @@ def maybe_download(data_dir, s_name, s_url):
     # always create a new directory for unpacked files
     if not os.path.isdir(s_dir):
         os.mkdir(s_dir)
-        print("created source dir:", s_dir)
+        logging.info("created source dir: " + s_dir)
 
     if os.listdir(s_dir):
-        print("file already exists:", s_dir)
+        logging.info("file already exists:" + s_dir)
     else:
         if not os.path.isfile(s_packed):
-            print("downloading", s_name, "...")
+            logging.info("downloading" + s_name + "...")
             import urllib.request
             import shutil
             # download_path should == s_packed
             # download_path, _ = urllib.urlretrieve(s_url, s_packed)
             with urllib.request.urlopen(s_url) as r, open(s_packed, 'wb') as f:
                 shutil.copyfileobj(r, f)
-            print('Successfully downloaded', s_packed)
-            print("size:", os.path.getsize(s_packed), 'bytes.')
+            logging.info('Successfully downloaded' + s_packed)
+            logging.info("size: {} bytes.".format(os.path.getsize(s_packed)))
 
         # uppack downloaded source file
-        print("extracting file:", s_packed)
+        logging.info("extracting file:" + s_packed)
         if s_ext == ".tar.gz":
             import tarfile
             with tarfile.open(s_packed, "r:*") as f:
@@ -120,30 +144,30 @@ def maybe_download(data_dir, s_name, s_url):
             with gzip.open(s_packed, "rb") as f, open(s, "wb") as s_unpack:
                 s_unpack.write(f.read())
         elif s_ext == "":
-            print("no file extention")
+            logging.info("no file extention")
         else:
             raise ValueError("unknown compressed file")
-        print("successfully extracted file:")
+        logging.info("successfully extracted file:")
 
     return s_dir
 
 
 def read_json(filename):
     if os.path.isfile(filename):
-        print("reading from json file:", filename)
+        logging.info("reading from json file:" + filename)
         with open(filename) as data_file:
             data = json.load(data_file)
-        print("finish reading json file")
+        logging.info("finish reading json file")
         return data
     else:
         raise FileNotFoundError("json file:", filename)
 
 
 def write_json(filename, data):
-    print("writing dmoz to", filename)
+    logging.info("writing dmoz to" + filename)
     with open(filename, 'w') as outfile:
-        json.dump(data, outfile)
-    print("finish writing to", filename)
+        json.dump(data, outfile, indent=4)
+    logging.info("finish writing to" + filename)
 
 
 class DmozHandler(xml.sax.handler.ContentHandler):
@@ -176,7 +200,7 @@ class DmozHandler(xml.sax.handler.ContentHandler):
         if self._capture_content:
             assert not self._expect_end
             self._current_content[self._capture_content_type] = content
-            # print self._capture_content_type, self._current_content[self._capture_content_type]
+            # logging.info self._capture_content_type, self._current_content[self._capture_content_type]
 
             # This makes the assumption that "topic" is the last entity in each dmoz page:
             if self._capture_content_type == "topic":
@@ -197,7 +221,7 @@ class DmozHandler(xml.sax.handler.ContentHandler):
                                  "url": self._current_page,
                                  "title": title,
                                  "desc": desc})
-                            # print("url:", self._current_page)
+                            # logging.info("url:"+ self._current_page)
                 self._expect_end = True
             self._capture_content = False
 
@@ -210,16 +234,17 @@ def parse_dmoz(file_path, dmoz_json):
         dmoz (dict): categories map to web pages.
         count (Counter): # of url in every categories.
     """
-    print("parsing dmoz xml file... (it may take several minites)")
+    logging.info("parsing dmoz xml file... (it may take several minites)")
     # create an XMLReader
     parser = xml.sax.make_parser()
     handler = DmozHandler()
     parser.setContentHandler(handler)
     parser.parse(file_path)
 
-    print("dmoz:", {k: len(handler.dmoz[k]) for k in handler.dmoz.keys()})
-    print("count:", Counter(handler.count))
-    print("parsed dmoz xml successfully")
+    logging.info("dmoz:{}".format({k: len(handler.dmoz[k])
+                                   for k in handler.dmoz.keys()}))
+    logging.info("count:{}".format(Counter(handler.count)))
+    logging.info("parsed dmoz xml successfully")
     write_json(dmoz_json, handler.dmoz)
 
 
@@ -229,17 +254,291 @@ def chunks_generator(l, n):
         yield l[i:i + n]
 
 
-def fetch_single_page(page, timeout):
+def page_generator(aa):
+    """Yield successive n-sized chunks from l."""
+    for a in aa:
+        yield a
+
+
+def get_child_urls(main_page, max_child=20):
+    """retrieve urls from giving html page.
+    args:
+        main_page(str): html file.
+        max_child(int): max number of return urls.
+    return:
+        list of url string.
+    """
+    from bs4 import BeautifulSoup, SoupStrainer
+    children = []
+    for link in BeautifulSoup(main_page,
+                              "html.parser",
+                              parse_only=SoupStrainer('a')):
+        if link.has_attr('href') and link['href'].startswith("http"):
+            children.append(link['href'])
+    if len(children) > max_child:
+        children = children[:max_child]
+    return children
+
+
+def google_url(op, url, max_num=10):
+    """get parent or spousal of url by google sear engine.
+    args:
+        op (str): "link" for parent urls or "related" for spousal urls
+        url (str)
+        max_num (int): number of return urls
+    """
+    s = op + ':' + url
+
+    # See in the config.cfg file for possible values
+    config = {
+        'use_own_ip': True,
+        'keyword': s,
+        'search_engines': ['google'],
+        'num_pages_for_keyword': round(max_num / 10),
+        'scrape_method': 'selenium',
+        'sel_browser': 'chrome',
+        'do_caching': False,
+        'log_level': 50
+    }
+
+    try:
+        search = scrape_with_config(config)
+        # let's inspect what we got
+        urls = []
+        for serp in search.serps:
+            for link in serp.links:
+                urls.append(link.link)
+    except GoogleSearchError as e:
+        logging.error("google_url: {}".format(e))
+        raise
+    return urls
+
+
+def google_urls(urls, max_num=10):
+    """get parent or spousal of url by google sear engine.
+    args:
+        op (str): "link" for parent urls or "related" for spousal urls
+        url ([url_str, url_str])
+        max_num (int): number of return urls
+    """
+    # See in the config.cfg file for possible values
+    config = {
+        'use_own_ip': True,
+        'keywords': urls,
+        'search_engines': ['google'],
+        'num_pages_for_keyword': round(max_num / 10),
+        'scrape_method': 'selenium',
+        'sel_browser': 'chrome',
+        'do_caching': False,
+        'log_level': 50,
+        'num_workers': 8
+    }
+
+    # config = {
+    #     'use_own_ip': 'True',
+    #     'keywords': urls,
+    #     'search_engines': ['google'],
+    #     'num_pages_for_keyword': round(max_num / 10),
+    #     'scrape_method': 'http',
+    #     'do_caching': 'False',
+    #     'num_workers': 8
+    # }
+    try:
+        logging.debug("a")
+        search = scrape_with_config(config)
+        # let's inspect what we got
+        urls = []
+        for serp in search.serps:
+            similar = []
+            for link in serp.links:
+                similar.append(link.link)
+            urls.append(similar)
+    except GoogleSearchError as e:
+        logging.error("google_url: {}".format(e))
+        raise
+    return urls
+
+
+def create_nodes(pages):
+    """
+    args:
+        [[url, html_text]]
+    """
+    nodes = []
+    for page in pages:
+        node = {}
+        node["n_id"] = create_nodes.count
+        node["n_url"] = page[0]
+        node["html"] = page[1]
+        create_nodes.count += 1
+        nodes.append(node)
+    return nodes
+
+
+def get_htmls(urls, timeout):
+    """get htmls from urls array.
+    args:
+        urls([str]): urls string array.
+        timeout(int): seconds
+    return:
+        [url, html]
+        url: str
+        html: str
+    """
+    import urllib.request
+    ret = []
+    for url in urls:
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as conn:
+                html = conn.read().decode("utf-8", errors="ignore")
+        except:
+            pass
+        else:
+            ret.append([url, html])
+    return ret
+
+
+def parse_htmls(htmls, max_len=-1, dmoz=None):
+    """
+    args:
+        [[url, html]]
+    return:
+        [[url, text from html]]
+    """
+    from bs4 import BeautifulSoup
+    import re
+    new_htmls = []
+    for html in htmls:
+        soup = BeautifulSoup(html[1], "html.parser")
+        new_html = []
+
+        if dmoz and len(dmoz) == 2 and dmoz[0] and dmoz[1]:
+            new_html.append('<core>' + dmoz[0] + '. ' + dmoz[1] + '</core>')
+
+        if html[0]:
+            new_html.append('<url>' + html[0] + '</url>')
+
+        title = soup.title
+        if title:
+            new_html.append('<title>' + title.string.strip() + '</title>')
+
+        meta = []
+        for a in soup.find_all('meta'):
+            if 'name' in a.attrs and (a['name'] == "description" or
+                                      a['name'] == 'keywords'):
+                meta.append(a['content'].strip())
+        if meta:
+            new_html.append('<meta>' + ' '.join(meta) + '</meata>')
+
+        heading = []
+        for a in soup.find_all(re.compile("h[1-5]")):
+            heading.append(a.get_text().strip())
+        if heading:
+            new_html.append('<heading>' + ' '.join(heading) + '</heading>')
+
+        paragraph = []
+        for a in soup.find_all('p'):
+            paragraph.append(a.get_text().strip())
+        if paragraph:
+            new_html.append('<paragraph>' + ' '.join(paragraph) +
+                            '</paragraph>')
+
+        tmp = ' '.join(new_html)
+        if max_len > 0:
+            if len(tmp) > max_len:
+                tmp = tmp[:max_len]
+        new_htmls.append([html[0], tmp])
+    return new_htmls
+
+
+def fetch_single_page(url, timeout):
     """Retrieve a single page and report the url and contents"""
     import urllib.request
-    with urllib.request.urlopen(page["url"], timeout=timeout) as conn:
-        return conn.read().decode("utf-8")
+    with urllib.request.urlopen(url["url"], timeout=timeout) as conn:
+        main_page = conn.read().decode("utf-8", errors="ignore")
+
+    page = {}
+    page["id"] = url["id"]
+    page["url"] = url["url"]
+    # page["edges"] = []
+    page["nodes"] = []
+
+    create_nodes.count = 0
+    main_pages = parse_htmls(
+        [[page["url"], main_page]],
+        dmoz=[url['title'], url['desc']])
+    page["nodes"].extend(create_nodes(main_pages))
+    logging.debug("add main")
+
+    # get child neighbors
+    try:
+        child_urls = get_child_urls(main_page, max_child=FLAGS.max_child)
+        child_pages = get_htmls(child_urls, timeout)
+        child_pages = parse_htmls(child_pages, FLAGS.max_html_length)
+        page["nodes"].extend(create_nodes(child_pages))
+        logging.debug("add children")
+    except Exception as e:
+        logging.error("child: {}".format(e))
+
+    # # get parent neighbors
+    # parent_urls = google_url("link", url["url"], max_num=FLAGS.max_neighbor)
+    # parent_pages = get_htmls(parent_urls, timeout)
+    # page["nodes"].extend(create_nodes(parent_pages))
+
+    # # get sibling neighbors
+    # sibling_count = 0
+    # for sibling in parent_pages:
+    #     sibling_urls = get_child_urls(sibling[1], max_child=FLAGS.max_neighbor)
+    #     sibling_pages = get_htmls(sibling_urls, timeout)
+    #     page["nodes"].extend(create_nodes(sibling_pages))
+    #     sibling_count += len(sibling_pages)
+
+    # get similar neighbors
+    # max_num should be 10 !!
+    # try:
+    #     if 'similar' in url and url['similar']:
+    #         similar_pages = get_htmls(url['similar'], timeout)
+    #         similar_pages = parse_htmls(similar_pages, 1024)
+    #         page["nodes"].extend(create_nodes(similar_pages))
+    #         logging.debug("add similar")
+    # except Exception as e:
+    #     logging.error("smilar page: {}".format(e))
+
+    try:
+        logging.debug("\nchild length: {}".format(len(child_pages)))
+        # print("parent length: {}".format(len(parent_pages)))
+        # print("sibling length: {}".format(sibling_count))
+        # logging.debug("similar length: {}".format(len(similar_pages)))
+        logging.info("url id: {}".format(url['id']))
+    except Exception as e:
+        logging.error("print: {}".format(e))
+
+    return page
 
 
-def fetch_chunk_pages(urls, outfile, max_workers):
-    import concurrent.futures
+def fetch_chunk_pages(urls, key_dir, max_workers):
+    """
+    args:
+        key_dir(str): path of category folder
+    return:
+        number of valid pages downloaded in this chunk.
+    """
 
+    # try:
+    #     # get similar pages for entire chunk
+    #     logging.debug("get similar pages")
+    #     tmp = ["related:" + u['url'] for u in urls]
+    #     similar_urls = google_urls(tmp, max_num=10)
+    #     for i in range(len(urls)):
+    #         urls[i]['similar'] = similar_urls[i]
+    #     logging.info("similar for chunk:{}".format(len(similar_urls)))
+    # except Exception as e:
+    #     logging.error("cannot google similar: {}".format(e))
+
+    logging.info('start fetching chunk pages')
     pages = []
+    page_index = 0
+    t_start = time.time()
     # We can use a with statement to ensure threads are cleaned up promptly
     with concurrent.futures.ThreadPoolExecutor(
             max_workers=max_workers) as executor:
@@ -253,35 +552,95 @@ def fetch_chunk_pages(urls, outfile, max_workers):
             try:
                 page = future.result()
             except Exception as exc:
-                print('%r generated an exception: %s' % (url, exc))
+                logging.error('%r:%r generated an exception: %s' %
+                              (url["id"], url["url"], exc))
             else:
-                # print('%r page is %d bytes' % (url["url"], len(page)))
+                # logging.info('%r page is %d bytes' % (url["url"], len(page)))
                 pages.append(page)
-    # write chunk of pages json file
-    write_json(outfile, pages)
+                page_index += 1
+                if page_index % FLAGS.pages_per_file == 0:
+                    chunk_index = page_index // FLAGS.pages_per_file - 1
+                    chunk_file = os.path.join(key_dir,
+                                              str(chunk_index) + ".json")
+                    # write chunk of pages json file
+                    logging.info("\n\n\nfinish fetching chunk {}".format(
+                        chunk_index))
+                    write_json(chunk_file, pages)
+                    pages = []
+                    t_cur = time.time()
+                    logging.info("total time used in chunk: {}s".format(
+                        t_cur - t_start))
+                    logging.info(
+                        "average time of fetching one page: {}\n\n".format(
+                            t_cur - t_start / FLAGS.pages_per_file))
+                    t_start = t_cur
+                    if chunk_index == FLAGS.max_file_num - 1:
+                        logging.info("\nreaching max file number\n\n")
+                        executor.shutdown(wait=False)
+                        logging.info("shudown executor")
+                        return chunk_index
+    # write the last block
+    if pages and chunk_index < FLAGS.max_file_num - 1:
+        logging.info("write last chunk")
+        chunk_index = page_index // FLAGS.pages_per_file
+        chunk_file = os.path.join(key_dir, str(chunk_index) + ".json")
+        # write chunk of pages json file
+        write_json(chunk_file, pages)
+        t_cur = time.time()
+        logging.info("total time used in chunk: {}s".format(t_cur - t_start))
+        logging.info("average time of fetching one page: {}\n\n".format(
+            (t_cur - t_start) / FLAGS.pages_per_file))
+    return chunk_index
 
 
-def fetch_pages(dmoz_json):
+def fetch_pages(dmoz_json, out_dir):
     """grab html for every url in dmoz, then write to the json file.
     Both main and four kinds of relatives html will be collected.
     """
     dmoz = read_json(dmoz_json)
-    out_dir = os.path.join(FLAGS.data_dir, "html_" + CUR_TIME)
-    os.makedirs(out_dir)
-    for key in dmoz.keys():
+    # for key in dmoz.keys():
+    for key in FLAGS.cat_fetch.split(','):
         key_dir = os.path.join(out_dir, key)
         os.makedirs(key_dir)
-        for index, urls in enumerate(chunks_generator(dmoz[key],
-                                                      FLAGS.pages_per_file)):
-            print("\nstart chunk:", str(index))
-            t_start = time.time()
-            chunk_file = os.path.join(key_dir, str(index) + ".json")
-            fetch_chunk_pages(urls, chunk_file, FLAGS.max_workers)
-            print("time used in chunk: {}s".format(time.time()-t_start))
+        logging.info("\n\nwrite json files to folder: {}".format(key_dir))
+        urls = page_generator(dmoz[key])
+        chunk_num = fetch_chunk_pages(urls, key_dir, FLAGS.max_workers)
+        logging.info("\ntotal valid chunks # for {}: {}".format(key,
+                                                                chunk_num))
+
+
+def set_logging(stream=False, fileh=False, filename="example.log"):
+    """set basic logging configurations (root logger).
+    args:
+        stream (bool): whether logging.info log to console.
+        fileh (bool): whether write log to file.
+        filename (str): the path of log file.
+    return:
+        configued root logger.
+    """
+    handlers = []
+    level = logging.INFO
+    log_format = '%(asctime)s: %(message)s'
+
+    if stream:
+        handlers.append(logging.StreamHandler())
+    if fileh:
+        handlers.append(logging.FileHandler(filename))
+    logging.basicConfig(format=log_format, handlers=handlers, level=level)
+    return logging.getLogger()
 
 
 def main():
     print("start of main\n")
+
+    html_dir = os.path.join(FLAGS.data_dir, "html_" + CUR_TIME)
+    os.makedirs(html_dir)
+    log_file = os.path.join(html_dir, "log")
+    set_logging(stream=True, fileh=True, filename=log_file)
+    logging.info("\nall arguments:")
+    for arg in vars(FLAGS):
+        logging.info("{:12}{}".format(arg, getattr(FLAGS, arg)))
+
     # download dmoz content file
     dmoz_path = maybe_download(FLAGS.data_dir, DMOZ_FILE, DMOZ_URL)
     dmoz_cont = os.path.join(dmoz_path, os.path.splitext(DMOZ_FILE)[0])
@@ -290,21 +649,23 @@ def main():
 
     dmoz_json = os.path.join(FLAGS.data_dir, DMOZ_JSON)
     if os.path.isfile(dmoz_json):
-        print("file already exists, won't parse dmoz xml:", dmoz_json)
+        logging.info("file already exists, won't parse dmoz xml: {}".format(
+            dmoz_json))
     else:
         # parse dmoz xml, and write to dmoz_json
-        # json format: [page, page]
-        # page: {"id":int, "url":str, "title":str, "desc":str}
+        # json format: [url, url]
+        # url: {"id":int, "url":str, "title":str, "desc":str}
         parse_dmoz(dmoz_cont, dmoz_json)
 
     # grab main and relatives html text, write to disc
     # json format: [page, page]
     # page: {"id":int, "url":str, "edges":[edge, edge], "nodes":[node, node]}
+    # the first node is the target page
     # edge: [n_id, n_id]
     # node: {"n_id":int, "n_url":str, "html":str, ???}
-    fetch_pages(dmoz_json)
+    fetch_pages(dmoz_json, html_dir)
 
-    print("\nend of main")
+    logging.info("\nend of main")
 
 
 if __name__ == "__main__":

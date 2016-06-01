@@ -14,7 +14,7 @@ import xml.sax
 import time
 import json
 import logging
-from GoogleScraper import scrape_with_config, GoogleSearchError
+# from GoogleScraper import scrape_with_config, GoogleSearchError
 import concurrent.futures
 
 #########################################

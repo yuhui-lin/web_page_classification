@@ -28,8 +28,8 @@ PARSER.add_argument("--data_dir",
 # CAT_FETCH is subset of CATEGORIES, only fetch those cats
 PARSER.add_argument("--cat_fetch",
                     type=str,
-                    default="Arts, Business, Computers, Health",
-                    help="cats to be print")
+                    default="Arts,Business,Computers,Health",
+                    help="cats to be print, no space")
 PARSER.add_argument("--pages_per_file",
                     type=int,
                     default=5000,
@@ -44,7 +44,7 @@ PARSER.add_argument("--max_workers",
                     help="number of max threads to fetch web pages")
 PARSER.add_argument("--fetch_timeout",
                     type=int,
-                    default=10,
+                    default=15,
                     help="max seconds to fetch a web page")
 PARSER.add_argument("--max_neighbor",
                     type=int,
@@ -516,10 +516,9 @@ def fetch_single_page(url, timeout):
     return page
 
 
-def fetch_chunk_pages(urls, key_dir, max_workers):
+def fetch_chunk_pages(urls, max_workers):
     """
     args:
-        key_dir(str): path of category folder
     return:
         number of valid pages downloaded in this chunk.
     """
@@ -537,8 +536,6 @@ def fetch_chunk_pages(urls, key_dir, max_workers):
 
     logging.info('start fetching chunk pages')
     pages = []
-    page_index = 0
-    t_start = time.time()
     # We can use a with statement to ensure threads are cleaned up promptly
     with concurrent.futures.ThreadPoolExecutor(
             max_workers=max_workers) as executor:
@@ -557,40 +554,7 @@ def fetch_chunk_pages(urls, key_dir, max_workers):
             else:
                 # logging.info('%r page is %d bytes' % (url["url"], len(page)))
                 pages.append(page)
-                page_index += 1
-                if page_index % FLAGS.pages_per_file == 0:
-                    chunk_index = page_index // FLAGS.pages_per_file - 1
-                    chunk_file = os.path.join(key_dir,
-                                              str(chunk_index) + ".json")
-                    # write chunk of pages json file
-                    logging.info("\n\n\nfinish fetching chunk {}".format(
-                        chunk_index))
-                    write_json(chunk_file, pages)
-                    pages = []
-                    t_cur = time.time()
-                    logging.info("total time used in chunk: {}s".format(
-                        t_cur - t_start))
-                    logging.info(
-                        "average time of fetching one page: {}\n\n".format(
-                            t_cur - t_start / FLAGS.pages_per_file))
-                    t_start = t_cur
-                    if chunk_index == FLAGS.max_file_num - 1:
-                        logging.info("\nreaching max file number\n\n")
-                        executor.shutdown(wait=False)
-                        logging.info("shudown executor")
-                        return chunk_index
-    # write the last block
-    if pages and chunk_index < FLAGS.max_file_num - 1:
-        logging.info("write last chunk")
-        chunk_index = page_index // FLAGS.pages_per_file
-        chunk_file = os.path.join(key_dir, str(chunk_index) + ".json")
-        # write chunk of pages json file
-        write_json(chunk_file, pages)
-        t_cur = time.time()
-        logging.info("total time used in chunk: {}s".format(t_cur - t_start))
-        logging.info("average time of fetching one page: {}\n\n".format(
-            (t_cur - t_start) / FLAGS.pages_per_file))
-    return chunk_index
+    return pages
 
 
 def fetch_pages(dmoz_json, out_dir):
@@ -603,10 +567,39 @@ def fetch_pages(dmoz_json, out_dir):
         key_dir = os.path.join(out_dir, key)
         os.makedirs(key_dir)
         logging.info("\n\nwrite json files to folder: {}".format(key_dir))
-        urls = page_generator(dmoz[key])
-        chunk_num = fetch_chunk_pages(urls, key_dir, FLAGS.max_workers)
-        logging.info("\ntotal valid chunks # for {}: {}".format(key,
-                                                                chunk_num))
+        # urls = page_generator(dmoz[key])
+        cur_chunk = []
+        dmoz_head = 0
+        j_ind = 0
+        while j_ind < FLAGS.max_file_num and dmoz_head < len(dmoz[key]):
+            t_start = time.time()
+            sub = round((FLAGS.pages_per_file - len(cur_chunk)) * 1.5)
+            while sub > 0 and len(
+                    cur_chunk) < FLAGS.pages_per_file and dmoz_head < len(dmoz[
+                        key]):
+                logging.info("\n\nj_ind:{}, key:{}, sub:{}".format(j_ind, key,
+                                                                   sub))
+                dmoz_tail = dmoz_head + sub
+                if dmoz_tail > len(dmoz[key]):
+                    logging.info("reach the end of dmoz[key]")
+                    dmoz_tail = len(dmoz[key])
+                sub_chunk = fetch_chunk_pages(dmoz[key][dmoz_head:dmoz_tail],
+                                              FLAGS.max_workers)
+                cur_chunk.extend(sub_chunk)
+                dmoz_head = dmoz_tail
+
+            # write chunk json file
+            chunk_file = os.path.join(key_dir, str(j_ind) + ".json")
+            # write chunk of pages json file
+            logging.info("\n\n\nfinish fetching chunk {}".format(j_ind))
+            write_json(chunk_file, cur_chunk[:FLAGS.pages_per_file])
+            cur_chunk = cur_chunk[FLAGS.pages_per_file:]
+            duration = time.time() - t_start
+            logging.info("total time used in chunk: {}s".format(duration))
+            logging.info("average time of fetching one page: {}\n\n".format(
+                duration / FLAGS.pages_per_file))
+            j_ind += 1
+        logging.info("\ntotal valid chunks # for {}: {}".format(key, j_ind))
 
 
 def set_logging(stream=False, fileh=False, filename="example.log"):

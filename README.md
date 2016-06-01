@@ -16,7 +16,7 @@ pip install -r requirements.txt
 python -m collect --data_dir ~/Downloads/wpc --pages_per_file 3
 python -m collect --data_dir ~/Downloads/wpc --pages_per_file 100 --max_file_num 5
 
-python -m convert --data_dir ~/Downloads/wpc --html_folder html_1
+python -m convert --data_dir ~/Downloads/wpc --html_folder html_
 ```
 
 

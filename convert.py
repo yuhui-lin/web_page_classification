@@ -37,7 +37,7 @@ tf.app.flags.DEFINE_integer(
     "target_len", "200",
     'the max #tokens of node string, 100 for 512 characters string.')
 tf.app.flags.DEFINE_integer(
-    "num_train_f", "1",
+    "num_train_f", "4",
     'number of training files per category.')
 tf.app.flags.DEFINE_integer(
     "num_test_f", "1",

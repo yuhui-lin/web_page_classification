@@ -7,14 +7,14 @@ import time
 import datetime
 
 import inputs
-from model_cnn import TextCNN
+from cnn.model import TextCNN
 
 # Parameters
 # ==================================================
 
 # Model Hyperparameters
-tf.flags.DEFINE_string("data_dir", "~/Downloads/wpc",
-                       "Comma-separated filter sizes (default: '3,4,5')")
+# tf.flags.DEFINE_string("data_dir", "~/Downloads/wpc",
+#                        "Comma-separated filter sizes (default: '3,4,5')")
 tf.flags.DEFINE_integer("embedding_dim", 50,
                         "Dimensionality of character embedding (default: 128)")
 tf.flags.DEFINE_string("filter_sizes", "3,4,5",
@@ -182,14 +182,20 @@ with tf.Graph().as_default():
         #     list(zip(x_train, y_train)), FLAGS.batch_size, FLAGS.num_epochs)
         # Training loop. For each batch...
         # for batch in batches:
-        for i in range(10000):
+        x, y = inputs.inputs("train",
+                             FLAGS.batch_size,
+                             FLAGS.num_epochs,
+                             min_shuffle=1000)
+        # Start input enqueue threads.
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+
+        try:
             # x_batch, y_batch = zip(*batch)
-            x, y = inputs.inputs("train",
-                                 FLAGS.batch_size,
-                                 FLAGS.num_epochs,
-                                 min_shuffle=1000)
-            target, unlabeled, labeled = x
-            train_step(target, y)
+            target, label = sess.run([x, y])
+            print("label: " + label)
+            # target, unlabeled, labeled = xx
+            train_step(target, label)
             current_step = tf.train.global_step(sess, global_step)
             if current_step % FLAGS.evaluate_every == 0:
                 print("\nEvaluation:")
@@ -200,3 +206,13 @@ with tf.Graph().as_default():
                                   checkpoint_prefix,
                                   global_step=current_step)
                 print("Saved model checkpoint to {}\n".format(path))
+        except tf.errors.OutOfRangeError:
+            print("\ndone")
+            # print('Done training for %d epochs, %d steps.' % (FLAGS.num_epochs, step))
+        finally:
+            # When done, ask the threads to stop.
+            coord.request_stop()
+
+            # Wait for threads to finish.
+            coord.join(threads)
+            sess.close()

@@ -28,19 +28,20 @@ PARSER.add_argument("--data_dir",
 # CAT_FETCH is subset of CATEGORIES, only fetch those cats
 PARSER.add_argument("--cat_fetch",
                     type=str,
-                    default="Arts,Business,Computers,Health",
-                    help="cats to be print, no space")
+                    default="Business,Society,Science,Recreation,Shopping,Games",
+                    # default="Arts,Business,Computers,Health",
+                    help="cats to be print, no space, empty to fetch all")
 PARSER.add_argument("--pages_per_file",
                     type=int,
                     default=5000,
                     help="number of web pages per json file")
 PARSER.add_argument("--max_file_num",
                     type=int,
-                    default=-1,
+                    default=2,
                     help="max num of files per cat, -1 for no limit")
 PARSER.add_argument("--max_workers",
                     type=int,
-                    default=8,
+                    default=16,
                     help="number of max threads to fetch web pages")
 PARSER.add_argument("--fetch_timeout",
                     type=int,
@@ -58,6 +59,14 @@ PARSER.add_argument("--max_html_length",
                     type=int,
                     default=512,
                     help="max length of each neighbors html length")
+PARSER.add_argument("--dataset_type",
+                    type=str,
+                    default="ukwa",
+                    help="dmoz or ukwa")
+PARSER.add_argument("--cat_num",
+                    type=int,
+                    default=10,
+                    help="number of categories to collect: 5 and 10")
 FLAGS = PARSER.parse_args()
 
 #########################################
@@ -65,11 +74,35 @@ FLAGS = PARSER.parse_args()
 #########################################
 CUR_TIME = time.strftime("%Y-%m-%d_%H-%M-%S")
 
+if FLAGS.dataset_type == 'dmoz':
+    if FLAGS.cat_num == 5:
+        CATEGORIES = list(set(["Arts", "Business", "Computers", "Health",
+                               "Sports"]))
+    elif FLAGS.cat_num == 10:
+        CATEGORIES = list(set(["Arts", "Business", "Computers", "Health",
+                               'Society', 'Science', 'Sports', 'Recreation',
+                               'Shopping', 'Games']))
+        # CATEGORIES = list(set(["Arts", "Business", "Computers", "Health",
+        #                        'Society', 'Science', 'Sports', 'Recreation',
+        #                        'Shopping', 'Reference', 'Games', 'Home']))
+    else:
+        raise ValueError("cat_num wrong value: " + FLAGS.cat_num)
+    DMOZ_JSON = "dmoz_{}.json".format(len(CATEGORIES))
+elif FLAGS.dataset_type == 'ukwa':
+    CATEGORIES = list(set(
+        ['Arts & Humanities', 'Government, Law & Politics',
+         'Society & Culture', 'Business, Economy & Industry',
+         'Science & Technology', 'Medicine & Health', 'Education & Research',
+         'Company Web Sites', 'Digital Society', 'Sports and Recreation']))
+    DMOZ_JSON = "ukwa_{}.json".format(len(CATEGORIES))
+else:
+    raise ValueError("dataset_type has wrong value: {}".format(
+        FLAGS.dataset_type))
+
 DMOZ_FILE = "content.rdf.u8.gz"
 DMOZ_URL = "http://rdf.dmoz.org/rdf/content.rdf.u8.gz"
-DMOZ_JSON = "dmoz.json"
+UKWA_FILE = 'classification.tsv'
 
-CATEGORIES = list(set(["Arts", "Business", "Computers", "Health"]))
 CAT_PREFIX = "Top/"
 
 #########################################
@@ -232,8 +265,10 @@ def parse_dmoz(file_path, dmoz_json):
         file_path (str): path of dmoz file.
     return:
         dmoz (dict): categories map to web pages.
+            {category:[url_info{desc/id/url/title:value}]}
         count (Counter): # of url in every categories.
     """
+    import random
     logging.info("parsing dmoz xml file... (it may take several minites)")
     # create an XMLReader
     parser = xml.sax.make_parser()
@@ -245,7 +280,55 @@ def parse_dmoz(file_path, dmoz_json):
                                    for k in handler.dmoz.keys()}))
     logging.info("count:{}".format(Counter(handler.count)))
     logging.info("parsed dmoz xml successfully")
+    logging.info("shuffling dmoz")
+    for key in handler.dmoz:
+        logging.info("shuffling category {}".format(key))
+        random.shuffle(handler.dmoz[key])
+        logging.info("reseting id")
+        for i in range(len(handler.dmoz[key])):
+            handler.dmoz[key][i]['id'] = i
+
     write_json(dmoz_json, handler.dmoz)
+
+
+def parse_ukwa(ukwa_tsv, ukwa_json):
+    """parse dmoz xml content file.
+    args:
+        ukwa_tsv (str): path of tsv file.
+    return:
+        dmoz (dict): categories map to web pages.
+            {category:[url_info{desc/id/url/title:value}]}
+        count (Counter): # of url in every categories.
+    """
+    import random
+    import csv
+
+    logging.info("parsing ukwa tsv file... (it may take several minites)")
+    with open(ukwa_tsv) as tsvin:
+        tsvin = csv.reader(tsvin, delimiter='\t')
+
+        ukwa = {cat: [] for cat in CATEGORIES}
+        p_cats = []
+        for row in tsvin:
+            p_cats.append(row[0])
+            if row[0] in CATEGORIES:
+                ukwa[row[0]].append({"id": 0,
+                                     "url": row[3],
+                                     "title": row[2],
+                                     "desc": ''})
+
+    cnt = Counter(p_cats)
+    logging.info("count:{}".format(Counter(cnt)))
+    logging.info("parsed ukwa xml successfully")
+    logging.info("shuffling ukwa")
+    for key in ukwa:
+        logging.info("shuffling category {}".format(key))
+        random.shuffle(ukwa[key])
+        logging.info("reseting id")
+        for i in range(len(ukwa[key])):
+            ukwa[key][i]['id'] = i
+
+    write_json(ukwa_json, ukwa)
 
 
 def chunks_generator(l, n):
@@ -367,9 +450,9 @@ def create_nodes(pages):
     nodes = []
     for page in pages:
         node = {}
-        node["n_id"] = create_nodes.count
-        node["n_url"] = page[0]
-        node["html"] = page[1]
+        node["r_id"] = create_nodes.count
+        node["r_url"] = page[0]
+        node["r_html"] = page[1]
         create_nodes.count += 1
         nodes.append(node)
     return nodes
@@ -460,22 +543,25 @@ def fetch_single_page(url, timeout):
     page = {}
     page["id"] = url["id"]
     page["url"] = url["url"]
-    # page["edges"] = []
-    page["nodes"] = []
-
-    create_nodes.count = 0
     main_pages = parse_htmls(
         [[page["url"], main_page]],
+        FLAGS.max_html_length,
         dmoz=[url['title'], url['desc']])
-    page["nodes"].extend(create_nodes(main_pages))
+    # page["nodes"].extend(create_nodes(main_pages))
+    page['html'] = main_pages[0][1]
+    assert isinstance(page['html'], str), "error: main_pages not string"
     logging.debug("add main")
+
+    create_nodes.count = 0
+    # page["edges"] = []
+    page["relatives"] = []
 
     # get child neighbors
     try:
         child_urls = get_child_urls(main_page, max_child=FLAGS.max_child)
         child_pages = get_htmls(child_urls, timeout)
         child_pages = parse_htmls(child_pages, FLAGS.max_html_length)
-        page["nodes"].extend(create_nodes(child_pages))
+        page["relatives"].extend(create_nodes(child_pages))
         logging.debug("add children")
     except Exception as e:
         logging.error("child: {}".format(e))
@@ -483,14 +569,14 @@ def fetch_single_page(url, timeout):
     # # get parent neighbors
     # parent_urls = google_url("link", url["url"], max_num=FLAGS.max_neighbor)
     # parent_pages = get_htmls(parent_urls, timeout)
-    # page["nodes"].extend(create_nodes(parent_pages))
+    # page["relatives"].extend(create_nodes(parent_pages))
 
     # # get sibling neighbors
     # sibling_count = 0
     # for sibling in parent_pages:
     #     sibling_urls = get_child_urls(sibling[1], max_child=FLAGS.max_neighbor)
     #     sibling_pages = get_htmls(sibling_urls, timeout)
-    #     page["nodes"].extend(create_nodes(sibling_pages))
+    #     page["relatives"].extend(create_nodes(sibling_pages))
     #     sibling_count += len(sibling_pages)
 
     # get similar neighbors
@@ -499,7 +585,7 @@ def fetch_single_page(url, timeout):
     #     if 'similar' in url and url['similar']:
     #         similar_pages = get_htmls(url['similar'], timeout)
     #         similar_pages = parse_htmls(similar_pages, 1024)
-    #         page["nodes"].extend(create_nodes(similar_pages))
+    #         page["relatives"].extend(create_nodes(similar_pages))
     #         logging.debug("add similar")
     # except Exception as e:
     #     logging.error("smilar page: {}".format(e))
@@ -562,8 +648,10 @@ def fetch_pages(dmoz_json, out_dir):
     Both main and four kinds of relatives html will be collected.
     """
     dmoz = read_json(dmoz_json)
-    # for key in dmoz.keys():
-    for key in FLAGS.cat_fetch.split(','):
+    keys = FLAGS.cat_fetch.split(',')
+    if not keys[0]:
+        keys = dmoz.keys()
+    for key in keys:
         key_dir = os.path.join(out_dir, key)
         os.makedirs(key_dir)
         logging.info("\n\nwrite json files to folder: {}".format(key_dir))
@@ -631,6 +719,7 @@ def main():
     log_file = os.path.join(html_dir, "log")
     set_logging(stream=True, fileh=True, filename=log_file)
     logging.info("\nall arguments:")
+    logging.info("CATEGORIES: {}".format(', '.join(CATEGORIES)))
     for arg in vars(FLAGS):
         logging.info("{:12}{}".format(arg, getattr(FLAGS, arg)))
 
@@ -645,10 +734,14 @@ def main():
         logging.info("file already exists, won't parse dmoz xml: {}".format(
             dmoz_json))
     else:
-        # parse dmoz xml, and write to dmoz_json
-        # json format: [url, url]
-        # url: {"id":int, "url":str, "title":str, "desc":str}
-        parse_dmoz(dmoz_cont, dmoz_json)
+        if FLAGS.dataset_type == 'dmoz':
+            # parse dmoz xml, and write to dmoz_json
+            # json format: [url, url]
+            # url: {"id":int, "url":str, "title":str, "desc":str}
+            parse_dmoz(dmoz_cont, dmoz_json)
+        else:
+            ukwa_tsv = os.path.join(FLAGS.data_dir, UKWA_FILE)
+            parse_ukwa(ukwa_tsv, dmoz_json)
 
     # grab main and relatives html text, write to disc
     # json format: [page, page]
@@ -656,6 +749,12 @@ def main():
     # the first node is the target page
     # edge: [n_id, n_id]
     # node: {"n_id":int, "n_url":str, "html":str, ???}
+
+    # second edition:
+    # json format: [page, page]
+    # page: {"id":int, "url":str, "html":str, "relatives":[relative, relative]}
+    # the first node is the target page
+    # relative: {"r_id":int, "r_url":str, "r_html":str}
     fetch_pages(dmoz_json, html_dir)
 
     logging.info("\nend of main")

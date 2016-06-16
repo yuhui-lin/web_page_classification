@@ -16,11 +16,19 @@ import tensorflow as tf
 #########################################
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string("data_dir", "data/", 'path of data directory.')
-tf.app.flags.DEFINE_string(
-    "categories", "Arts,Business,Computers,Health",
-    'categories name list, divided by comma, no space in between.')
 tf.app.flags.DEFINE_integer(
-    "embed_length", 50,
+    "num_cats", 5,
+    "the number of categories of dataset.")
+# tf.app.flags.DEFINE_string(
+#     "categories", "Arts,Business,Computers,Health,Sports",
+#     'categories name list, divided by comma, no space in between.')
+# tf.app.flags.DEFINE_string(
+#     "categories",
+#     "Arts,Business,Computers,Health,Sports,Society,Science,Recreation,"
+#     "Shopping,Reference,Games,Home",
+#     'categories name list, divided by comma, no space in between.')
+tf.app.flags.DEFINE_integer(
+    "we_dim", 50,
     "number of characters in each input sequences (default: 1024)")
 tf.app.flags.DEFINE_string("html_folder", "html-time/",
                            'path of html json files directory under data_dir.')
@@ -29,12 +37,15 @@ tf.app.flags.DEFINE_integer("insert_chunk_size", "1000",
 tf.app.flags.DEFINE_integer(
     "unknown_length", "50000",
     'the number of lines used to compute unknown_vector')
+# tf.app.flags.DEFINE_integer(
+#     "node_len", "100",
+#     'the max #tokens of node string, 100 for 512 characters string.')
+# tf.app.flags.DEFINE_integer(
+#     "target_len", "200",
+#     'the max #tokens of node string, 100 for 512 characters string.')
 tf.app.flags.DEFINE_integer(
-    "node_len", "100",
-    'the max #tokens of node string, 100 for 512 characters string.')
-tf.app.flags.DEFINE_integer(
-    "target_len", "200",
-    'the max #tokens of node string, 100 for 512 characters string.')
+    "html_len", "512",
+    'the number of tokens in one html string.')
 tf.app.flags.DEFINE_integer("num_train_f", "4",
                             'number of training files per category.')
 tf.app.flags.DEFINE_integer("num_test_f", "1",
@@ -47,9 +58,15 @@ tf.app.flags.DEFINE_string("wv_db", "dict", 'sqlite or dict')
 # global variables
 #########################################
 CUR_TIME = time.strftime("%Y-%m-%d_%H-%M-%S")
-CATEGORIES = FLAGS.categories.split(',')
+if FLAGS.num_cats == 5:
+    CATEGORIES = "Arts,Business,Computers,Health,Sports".split(',')
+elif FLAGS.num_cats == 10:
+    CATEGORIES = "Arts,Business,Computers,Health,Sports,Society,Science,Recreation,Shopping,Games".split(',')
+else:
+    raise ValueError("wrong num_cats: " + FLAGS.num_cats)
 
-DMOZ_JSON = "dmoz.json"
+
+DMOZ_JSON = "dmoz_{}.json".format(len(CATEGORIES))
 DMOZ_SQLITE = "dmoz.sqlite"
 
 WV_FILE = 'glove.6B.50d.txt'
@@ -95,7 +112,7 @@ def _bytes_feature(value):
 
 def _vec_str(vec, dtype=np.float32):
     """word vectors to numpy string."""
-    logging.info("vec length: {}".format(len(vec)))
+    logging.debug("wv to np: vec length: {}".format(len(vec)))
     # if len(vec):
     #     logging.debug("vec: {}".format(vec[0]))
     tmp = np.array(vec, dtype=dtype)
@@ -123,46 +140,12 @@ def write_tfr(tfr_file, cat_id, target_wv, unlabeled_wv, labeled_p):
             'label': _int64_feature(cat_id),
             'target': _bytes_feature(_vec_str(target_wv[index])),
             'unlabeled': _bytes_feature(_vec_str(unlabeled_wv[index])),
-            'labeled': _bytes_feature(_vec_str(labeled_p[index], np.int32))
+            'un_len': _int64_feature(len(unlabeled_wv[index])),
+            'labeled': _bytes_feature(_vec_str(labeled_p[index], np.int32)),
+            'la_len': _int64_feature(len(labeled_p[index]))
         }))
         writer.write(example.SerializeToString())
     logging.info("finish writing TFRecords file\n\n")
-
-
-def str_to_wv(string, wv_conn, str_len=-1):
-    """convert a string to word vectors.
-    args:
-        string (str): string.
-        wv_conn: sqlite connection to wv DB.
-        str_len (int): number of word vectors in one string.
-    return:
-        [word_vectors]
-    """
-    vectors = []
-    # tokenize html string
-    s_tokens = nltk.word_tokenize(string.lower())
-    logging.debug("s_tokens length: {}".format(len(s_tokens)))
-    for token in s_tokens:
-        exe = wv_conn.execute("SELECT * FROM wv WHERE word = ?",
-                              tuple([token]))
-        result = exe.fetchone()
-        if result:
-            # logging.debug("find regex: " + str(result))
-            vector = list(map(float, result[1].split(" ")))
-        else:
-            # unknown word
-            logging.debug("unknown word: {}".format(token))
-            vector = unknown_vector
-        vectors.append(vector)
-        # logging.debug("vector: {}".format(vector))
-        # align node length
-
-    if str_len >= 0:
-        if len(vectors) > str_len:
-            vectors = vectors[:str_len]
-        else:
-            vectors.extend([unknown_vector] * (str_len - len(vectors)))
-    return vectors
 
 
 def convert_wv(target_p, unlabeled_p, wv_conn):
@@ -177,7 +160,7 @@ def convert_wv(target_p, unlabeled_p, wv_conn):
     logging.info("\nconvert to word vector")
     target_wv = []
     for s in target_p:
-        target_wv.append(wv_conn.select(s, str_len=FLAGS.target_len))
+        target_wv.append(wv_conn.select(s, str_len=FLAGS.html_len))
 
     unlabeled_wv = []
     for nodes in unlabeled_p:
@@ -185,39 +168,9 @@ def convert_wv(target_p, unlabeled_p, wv_conn):
         for s_node in nodes:
             # logging.debug("node length: {}".format(len(s_node)))
             unlabeled_wv[-1].append(wv_conn.select(s_node,
-                                                   str_len=FLAGS.node_len))
+                                                   str_len=FLAGS.html_len))
 
     return target_wv, unlabeled_wv
-
-
-def check_labeled(url, dmoz_conn):
-    """check if url exists in Dmoz DB.
-    args:
-        url(str): string of url.
-    return:
-        index of categories id. -1 if not exists.
-    """
-    url_p = urlparse(url)
-    netloc = url_p.netloc.split(':')[0]
-    # get the first level path
-    path = ''
-    if url_p.path:
-        path = url_p.path.split('/')[1]
-
-    # LIKE is faster than REGEXP
-    url_regex = ['%' + netloc + '/' + path + '%']
-    exe = dmoz_conn.execute("SELECT * FROM dmoz WHERE url LIKE ?", url_regex)
-    # url_regex = [netloc + '/' + path]
-    # exe = dmoz_conn.execute("SELECT * FROM dmoz WHERE url = ?", url_regex)
-    # don't use regex, way too slow
-    # url_regex = ['.*' + netloc + '/' + path + '.*']
-    # exe = dmoz_conn.execute("SELECT * FROM dmoz WHERE url REGEXP ?", url_regex)
-    result = exe.fetchone()
-    if result:
-        logging.debug("find regex: " + str(result))
-        # if found, return category id
-        return result[1]
-    return -1
 
 
 def one_hot(cat):
@@ -226,23 +179,37 @@ def one_hot(cat):
     return ret
 
 
+def _clean_url(url):
+    """clean origianl url.
+    only keep first level folder.
+    like: www.yuhui.com/haha
+    """
+    url_p = urlparse(url)
+    netloc = url_p.netloc.split(':')[0]
+    # get the first level path
+    path = ''
+    if url_p.path:
+        path = url_p.path.split('/')[1]
+    url_clean = netloc + '/' + path
+    return url_clean
+
+
 def split_single_page(page, dmoz_conn):
     """split a single web page data."""
-    target = page['nodes'][0]['html']
+    target = page['html']
     unlabeled = []
     labeled = []
 
-    logging.info("id: " + str(page['id']))
-    logging.debug("#nodes: " + str(len(page['nodes'])))
-    for node in page['nodes']:
-        if node['n_id'] != 0:
-            cat = dmoz_conn.select(node['n_url'])
-            if cat >= 0:
-                # labeled
-                labeled.append(one_hot(cat))
-            else:
-                # unlabeled
-                unlabeled.append(node['html'])
+    logging.info("split page id: " + str(page['id']))
+    logging.debug("#nodes: " + str(len(page['relatives'])))
+    for node in page['relatives']:
+        cat = dmoz_conn.select(_clean_url(node['r_url']))
+        if cat >= 0:
+            # labeled
+            labeled.append(one_hot(cat))
+        else:
+            # unlabeled
+            unlabeled.append(node['r_html'])
     return target, unlabeled, labeled
 
 
@@ -296,16 +263,6 @@ class DmozDB(object):
 
         self.init()
 
-    def _clean_url(self, url):
-        url_p = urlparse(url)
-        netloc = url_p.netloc.split(':')[0]
-        # get the first level path
-        path = ''
-        if url_p.path:
-            path = url_p.path.split('/')[1]
-        url_clean = netloc + '/' + path
-        return url_clean
-
     def init_sqlite(self):
         """get sqlite connection giving path of database file.
         args:
@@ -355,7 +312,7 @@ class DmozDB(object):
                     # path = '/'
                     # if url.path:
                     #     path = url.path
-                    url_clean = self._clean_url(page['url'])
+                    url_clean = _clean_url(page['url'])
                     url_chunk.append((url_clean, CATEGORIES.index(cat)))
                     row_ind += 1
                     if row_ind % FLAGS.insert_chunk_size == 0:
@@ -398,7 +355,7 @@ class DmozDB(object):
         for cat in dmoz:
             cat_id = CATEGORIES.index(cat)
             for page in dmoz[cat]:
-                url_clean = self._clean_url(page['url'])
+                url_clean = _clean_url(page['url'])
                 self.dict[url_clean] = cat_id
 
     def select_sqlite(self, url):
@@ -412,7 +369,7 @@ class DmozDB(object):
         # url_regex = ['%' + netloc + '/' + path + '%']
         # exe = self.conn.execute("SELECT * FROM dmoz WHERE url LIKE ?", url_regex)
         # url_regex = [netloc + '/' + path]
-        url_clean = self._clean_url(url)
+        url_clean = _clean_url(url)
         exe = dmoz_conn.execute("SELECT * FROM dmoz WHERE url = ?", url_clean)
         # don't use regex, way too slow
         # url_regex = ['.*' + netloc + '/' + path + '.*']
@@ -426,16 +383,17 @@ class DmozDB(object):
 
     def select_dict(self, url):
         if url in self.dict:
-            logging.info("select dmoz: " + url)
+            logging.debug("select dmoz: " + url)
             return self.dict[url]
         else:
             return -1
 
-
     def close_sqlite(self):
         self.conn.close()
+
     def close_dict(self):
         pass
+
 
 class WvDB(object):
     def __init__(self, db):
@@ -486,7 +444,7 @@ class WvDB(object):
             logging.info("created table")
 
             word_chunk = []
-            unknown = [0] * FLAGS.embed_length
+            unknown = [0] * FLAGS.we_dim
             with open(wv_file_path) as lines:
                 for row_ind, line in enumerate(lines):
                     tmp = line.split(' ', 1)
@@ -539,7 +497,7 @@ class WvDB(object):
 
         logging.info("creating wv dict")
         self.dict = {}
-        unknown = [0] * FLAGS.embed_length
+        unknown = [0] * FLAGS.we_dim
         with open(wv_file_path) as lines:
             for row_ind, line in enumerate(lines):
                 tmp = line.split(' ', 1)
@@ -610,6 +568,7 @@ class WvDB(object):
                 s_tokens = s_tokens[:str_len]
         for token in s_tokens:
             vector = self.dict.get(token, self.unknown)
+            # vector = self.unknown
             vectors.append(vector)
             # logging.debug("vector: {}".format(vector))
 
@@ -619,11 +578,12 @@ class WvDB(object):
                 vectors.extend([self.unknown] * (str_len - len(vectors)))
         return vectors
 
-
     def close_sqlite(self):
         self.conn.close()
+
     def close_dict(self):
         pass
+
 
 def set_logging(stream=False, fileh=False, filename="example.log"):
     """set basic logging configurations (root logger).

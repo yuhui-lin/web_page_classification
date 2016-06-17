@@ -7,7 +7,9 @@ import tensorflow as tf
 
 import model
 # import all kinds of neural network here
-import models.cnn
+# import models.cnn
+# from models import *
+import models
 
 #########################################
 # FLAGS
@@ -21,7 +23,6 @@ tf.app.flags.DEFINE_integer(
     "log_level", 20,
     "numeric value of logging level, 20 for info, 10 for debug.")
 tf.app.flags.DEFINE_integer("in_top_k", 1, "compare the top n results.")
-
 
 # Training parameters
 tf.app.flags.DEFINE_integer("num_epochs", 200,
@@ -53,12 +54,10 @@ tf.app.flags.DEFINE_integer(
 # tf.app.flags.DEFINE_string(
 #     "categories", "Arts,Business,Computers,Health",
 #     'categories name list, divided by comma, no space in between.')
-tf.app.flags.DEFINE_boolean(
-    'if_eval', False,
-    "Whether to log device placement.")
-tf.app.flags.DEFINE_string(
-    'model_type', 'cnn',
-    'the type of NN model. cnn, crnn, resnn, resrnn...')
+tf.app.flags.DEFINE_boolean('if_eval', False,
+                            "Whether to log device placement.")
+tf.app.flags.DEFINE_string('model_type', 'cnn',
+                           'the type of NN model. cnn, crnn, resnn, resrnn...')
 
 #########################################
 # global variables
@@ -221,15 +220,15 @@ def main(argv=None):
     if FLAGS.model_type == "cnn":
         model_type = models.cnn.CNN
     elif FLAGS.model_type == "crnn":
-        model_type = models.cnn.CRNN
+        model_type = models.crnn.CRNN
     elif FLAGS.model_type == "resnn":
-        model_type = models.cnn.ResNN
+        model_type = models.resnn.ResNN
     elif FLAGS.model_type == "resrnn":
-        model_type = models.cnn.ResRNN
+        model_type = models.resrnn.ResRNN
     elif FLAGS.model_type == "rnn":
-        model_type = models.cnn.RNN
+        model_type = models.rnn.RNN
     elif FLAGS.model_type == "rrnn":
-        model_type = models.cnn.RRNN
+        model_type = models.rnn.RRNN
     else:
         raise ValueError("wrong model_name:" + FLAGS.mode)
 

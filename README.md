@@ -19,8 +19,8 @@ python -m collect --data_dir ~/Downloads/wpc --pages_per_file 3 --max_file_num 2
 
 python -m convert --data_dir ~/Downloads/wpc --html_folder html_
 
-python -m cnn.train --data_dir ~/Downloads/wpc/
-python -m cnn.eval --data_dir ~/Downloads/wpc/ --train_dir ~/Downloads/wpc/cnn/outputs/
+python -m train --data_dir ~/Downloads/wpc/ --model_type cnn
+python -m eval --data_dir ~/Downloads/wpc/ --model_type cnn --train_dir ~/Downloads/wpc/cnn/outputs/
 ```
 
 

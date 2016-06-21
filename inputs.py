@@ -28,7 +28,7 @@ tf.app.flags.DEFINE_integer(
     'num_read_threads', 5,
     'number of reading threads to shuffle examples between files.')
 tf.app.flags.DEFINE_integer(
-    "html_len", 512,
+    "html_len", 200,
     "the number of tokens in one html vector.")
 tf.app.flags.DEFINE_integer(
     "num_cats", 10,

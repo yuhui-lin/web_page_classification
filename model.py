@@ -1,7 +1,9 @@
 """neural network model."""
 import re
+import math
 
 import tensorflow as tf
+import numpy as np
 
 import inputs
 
@@ -10,11 +12,8 @@ import inputs
 #########################################
 FLAGS = tf.app.flags.FLAGS
 # parameters applied for both train.py and eval.py will be kept here.
-# Basic model parameters.
-tf.app.flags.DEFINE_integer("batch_size", 128, "mini Batch Size (default: 64)")
-tf.app.flags.DEFINE_integer("num_layers", 1, "word vector dimension")
-tf.app.flags.DEFINE_integer("hidden_layers", 50, "word vector dimension")
-tf.app.flags.DEFINE_integer("num_local", 1024, "word vector dimension")
+# currently don't put any flag here
+# only in_top_k for both train and eval
 
 #########################################
 # global variables
@@ -23,7 +22,7 @@ FEATURE_NUM = 256
 
 # Constants describing the training process.
 MOVING_AVERAGE_DECAY = 0.9999  # The decay to use for the moving average.
-NUM_EPOCHS_PER_DECAY = 350.0  # Epochs after which learning rate decays.
+NUM_EPOCHS_PER_DECAY = 40.0  # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 INITIAL_LEARNING_RATE = 0.01  # Initial learning rate.
 
@@ -46,7 +45,9 @@ class Model(object):
             # build training graph
             self.dropout = FLAGS.dropout_keep_prob
 
-            self.global_step = tf.Variable(0, trainable=False)
+            self.global_step = tf.Variable(0,
+                                           trainable=False,
+                                           name="global_step")
 
             # get input data
             # sequences, labels = model.inputs_train()
@@ -216,6 +217,7 @@ class Model(object):
         num_batches_per_epoch = FLAGS.num_train_examples / FLAGS.batch_size
         decay_steps = int(num_batches_per_epoch * NUM_EPOCHS_PER_DECAY)
 
+        print("decay_steps: ", decay_steps)
         # Decay the learning rate exponentially based on the number of steps.
         lr_decay = tf.train.exponential_decay(INITIAL_LEARNING_RATE,
                                               global_step,
@@ -223,7 +225,7 @@ class Model(object):
                                               LEARNING_RATE_DECAY_FACTOR,
                                               staircase=True)
         # compare with 0.01 * 0.5^10
-        lr = tf.maximum(lr_decay, 0.000009765625)
+        lr = tf.maximum(lr_decay, 0.0000001)
         tf.scalar_summary('learning_rate', lr)
 
         # Generate moving averages of all losses and associated summaries.
@@ -259,9 +261,21 @@ class Model(object):
 
     def train_step(self, sess):
         """run one step on one batch trainning examples."""
-        _, loss_value, top_k = sess.run([self.train_op, self.loss,
-                                         self.top_k_op])
-        return loss_value, top_k
+        step, _, loss_value, top_k = sess.run([self.global_step, self.train_op,
+                                               self.loss, self.top_k_op])
+        return step, loss_value, top_k
 
-    def eval_step(self, sess):
-        pass
+    def eval_once(self, sess):
+        # it's better to divide exactly with no remainder
+        num_iter = int(math.ceil(FLAGS.num_test_examples / FLAGS.batch_size))
+        true_count = 0  # counts the number of correct predictions.
+        total_sample_count = num_iter * FLAGS.batch_size
+        eval_step = 0
+        while eval_step < num_iter:
+            predictions = sess.run([self.top_k_op_eval])
+            true_count += np.sum(predictions)
+            eval_step += 1
+
+        # compute precision @ 1.
+        precision = true_count / total_sample_count
+        return precision

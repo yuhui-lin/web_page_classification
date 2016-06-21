@@ -5,6 +5,7 @@ import logging
 import numpy as np
 import tensorflow as tf
 
+import model
 # import all kinds of neural network here
 # import models.cnn
 # from models import *
@@ -15,43 +16,48 @@ import models
 #########################################
 FLAGS = tf.app.flags.FLAGS
 # environmental parameters
-tf.app.flags.DEFINE_string('model_type', 'cnn',
-                           'the type of NN model. cnn, crnn, resnn, resrnn...')
 tf.app.flags.DEFINE_string(
     'outputs_dir', 'outputs/',
     'Directory where to write event logs and checkpoint.')
 tf.app.flags.DEFINE_integer(
     "log_level", 20,
     "numeric value of logging level, 20 for info, 10 for debug.")
-tf.app.flags.DEFINE_boolean('if_eval', False,
-                            "Whether to log device placement.")
+tf.app.flags.DEFINE_integer("in_top_k", 1, "compare the top n results.")
 
 # Training parameters
-tf.app.flags.DEFINE_integer("batch_size", 128, "mini Batch Size (default: 64)")
-tf.app.flags.DEFINE_integer("in_top_k", 1, "compare the top n results.")
 tf.app.flags.DEFINE_integer("num_epochs", 200,
                             "Number of training epochs (default: 100)")
 tf.app.flags.DEFINE_float("dropout_keep_prob", 0.5,
                           "Dropout keep probability (default: 0.5)")
-tf.app.flags.DEFINE_integer('max_steps', 1000000,
-                            """Number of total batches to run.""")
+tf.app.flags.DEFINE_integer(
+    "evaluate_every", 100,
+    "Evaluate model on dev set after this many steps (default: 100)")
+tf.app.flags.DEFINE_integer("checkpoint_every", 100,
+                            "Save model after this many steps (default: 100)")
 
 # Misc Parameters
 tf.app.flags.DEFINE_boolean("allow_soft_placement", True,
                             "Allow device soft device placement")
+tf.app.flags.DEFINE_integer('max_steps', 1000000,
+                            """Number of total batches to run.""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
-tf.app.flags.DEFINE_integer('print_step', 2,
+tf.app.flags.DEFINE_integer('print_step', 1,
                             """Number of steps to print current state.""")
-tf.app.flags.DEFINE_integer('summary_step', 10,
+tf.app.flags.DEFINE_integer('summary_step', 3,
                             """Number of steps to write summaries.""")
-tf.app.flags.DEFINE_integer('checkpoint_step', 100,
+tf.app.flags.DEFINE_integer('checkpoint_step', 50,
                             """Number of steps to write checkpoint. """)
 tf.app.flags.DEFINE_integer(
     'num_checkpoints', 10,
     "Number of maximum checkpoints to keep. default: 10")
-tf.app.flags.DEFINE_integer(
-    'sleep', 0, "the number of seconds to sleep between steps. 0, 1, 2...")
+# tf.app.flags.DEFINE_string(
+#     "categories", "Arts,Business,Computers,Health",
+#     'categories name list, divided by comma, no space in between.')
+tf.app.flags.DEFINE_boolean('if_eval', False,
+                            "Whether to log device placement.")
+tf.app.flags.DEFINE_string('model_type', 'cnn',
+                           'the type of NN model. cnn, crnn, resnn, resrnn...')
 
 #########################################
 # global variables
@@ -62,7 +68,7 @@ if FLAGS.data_dir == "data/":
     TRAIN_DIR = os.path.join(FLAGS.outputs_dir, TRAIN_FOLDER)
 else:
     TRAIN_DIR = os.path.join(FLAGS.data_dir, FLAGS.outputs_dir, TRAIN_FOLDER)
-# SUMMARY_DIR = os.path.join(TRAIN_DIR, "summaries")
+SUMMARY_DIR = os.path.join(TRAIN_DIR, "summaries")
 CHECKPOINT_DIR = os.path.join(TRAIN_DIR, "checkpoints")
 CHECKPOINT_PATH = os.path.join(CHECKPOINT_DIR, 'model.ckpt')
 
@@ -75,31 +81,40 @@ def train(model_type):
     """Train neural network for a number of steps."""
     logging.info("\nstart training...")
     with tf.Graph().as_default():
-        # build computing graph
-        with tf.variable_scope("model", reuse=None):
-            model_train = model_type(is_train=True)
+        model_train = model_type(is_train=True)
         if FLAGS.if_eval:
-            with tf.variable_scope("model", reuse=True):
-                model_eval = model_type(is_train=False)
+            model_eval = model_type(is_train=False)
 
+        # Create a saver.
         saver = tf.train.Saver(tf.all_variables(),
                                max_to_keep=FLAGS.num_checkpoints)
-        # sv = tf.train.Supervisor(logdir=TRAIN_DIR, saver=saver,
-        #                          save_summaries_secs=10, save_model_secs=20)
-        sv = tf.train.Supervisor(logdir=TRAIN_DIR,
-                                 saver=saver,
-                                 save_summaries_secs=0,
-                                 save_model_secs=0)
+
+        # Build the summary operation based on the TF collection of Summaries.
+        summary_op = tf.merge_all_summaries()
+
+        # Build an initialization operation to run below.
+        init = tf.initialize_all_variables()
 
         # Start running operations on the Graph.
-        sess = sv.prepare_or_wait_for_session(config=tf.ConfigProto(
-            log_device_placement=FLAGS.log_device_placement))
-        # with sv.managed_session("") as sess:
+        sess = tf.Session(config=tf.ConfigProto(log_device_placement=
+                                                FLAGS.log_device_placement))
+        # with tf.Session(config=tf.ConfigProto(
+        #     log_device_placement=FLAGS.log_device_placement)) as sess:
+        sess.run(init)
+
+        # Start the queue runners.
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+
+        # summary writer
+        summary_writer = tf.train.SummaryWriter(SUMMARY_DIR, sess.graph)
 
         try:
-            while not sv.should_stop():
+            step = 1
+            while not coord.should_stop():
                 start_time = time.time()
-                step, loss_value, top_k = model_train.train_step(sess)
+                loss_value, top_k = model_train.train_step(sess)
+
                 duration = time.time() - start_time
 
                 assert not np.isnan(
@@ -110,55 +125,43 @@ def train(model_type):
                     num_examples_per_step = FLAGS.batch_size
                     examples_per_sec = num_examples_per_step / duration
                     sec_per_batch = float(duration)
-                    precision = np.sum(top_k) / FLAGS.batch_size
 
+                    precision = np.sum(top_k) / FLAGS.batch_size
                     format_str = (
                         'step %d, loss = %.2f, precision = %.2f (%.1f '
                         'examples/sec; %.3f sec/batch)')
-                    logging.info(format_str %
-                                 (step, loss_value, precision,
-                                  examples_per_sec, sec_per_batch))
+                    print(format_str % (step, loss_value, precision,
+                                        examples_per_sec, sec_per_batch))
 
                 # save summary
                 if step % FLAGS.summary_step == 0:
-                    summary_str = sess.run(sv.summary_op)
-                    sv.summary_writer.add_summary(summary_str, step)
+                    summary_str = sess.run(summary_op)
+                    summary_writer.add_summary(summary_str, step)
                     logging.info("step: {}, wrote summaries.".format(step))
 
                 # Save the model checkpoint periodically and eval on test set.
                 if step % FLAGS.checkpoint_step == 0 or (
                         step + 1) == FLAGS.max_steps:
-                    saver_path = sv.saver.save(sess,
-                                               CHECKPOINT_PATH,
-                                               global_step=step)
+                    saver_path = saver.save(sess,
+                                            CHECKPOINT_PATH,
+                                            global_step=step)
                     logging.info("\nSaved model checkpoint to {}\n".format(
                         saver_path))
 
                     # start evaluation for this checkpoint, or run eval.py
                     if FLAGS.if_eval:
                         logging.info("\n\nevaluating current checkpoint:")
-                        precision = model_eval.eval_once(sess)
-                        print('%s: precision @ 1 = %.3f' %
-                              (time.strftime("%c"), precision))
+                        pass
 
-                        summary = tf.Summary()
-                        summary.ParseFromString(sess.run(sv.summary_op))
-                        summary.value.add(tag='precision @ 1',
-                                          simple_value=precision)
-                        sv.summary_writer.add_summary(summary, step)
-                        print("write eval summary\n\n")
-
+                step += 1
                 # sleep for test use
-                if FLAGS.sleep > 0:
-                    print("sleep {} second...".format(FLAGS.sleep))
-                    time.sleep(FLAGS.sleep)
+                # print("sleep 1 second...")
+                # time.sleep(1)
         except tf.errors.OutOfRangeError:
-            print("sv checkpoint saved path: " + sv.save_path)
             print("Done~")
         finally:
-            sv.request_stop()
-        # coord.join(threads)
-        sv.wait_for_stop()
+            coord.request_stop()
+        coord.join(threads)
         sess.close()
 
 
@@ -197,7 +200,7 @@ def main(argv=None):
     os.makedirs(TRAIN_DIR)
 
     # loging
-    log_file = os.path.join(TRAIN_DIR, "log.txt")
+    log_file = os.path.join(TRAIN_DIR, "log")
     set_logging(level=FLAGS.log_level,
                 stream=True,
                 fileh=True,
@@ -213,6 +216,7 @@ def main(argv=None):
     logging.info("create checkpoints folder: {}".format(CHECKPOINT_DIR))
 
     # get model name
+    model_type = model.Model
     if FLAGS.model_type == "cnn":
         model_type = models.cnn.CNN
     elif FLAGS.model_type == "crnn":
@@ -230,7 +234,7 @@ def main(argv=None):
 
     # core
     train(model_type)
-    logging.info("summary dir: " + TRAIN_DIR)
+    logging.info("summary dir: " + SUMMARY_DIR)
 
     print("\n end of main")
 

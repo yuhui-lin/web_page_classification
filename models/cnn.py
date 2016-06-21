@@ -7,6 +7,7 @@ import model
 #########################################
 FLAGS = tf.app.flags.FLAGS
 
+
 class CNN(model.Model):
     """simple convolutional neural network model.
     classify web page only based on target html."""
@@ -28,7 +29,7 @@ class CNN(model.Model):
         # Create a convolution + maxpool layer for each filter size
         pooled_outputs = []
         for i, filter_size in enumerate(filter_sizes):
-            with tf.name_scope("conv-maxpool-%s" % filter_size):
+            with tf.variable_scope("conv-maxpool-%s" % filter_size):
                 # Convolution Layer
                 filter_shape = [filter_size, 1, FLAGS.we_dim, num_filters]
                 W = tf.Variable(
@@ -61,16 +62,16 @@ class CNN(model.Model):
         h_pool_flat = tf.reshape(h_pool, [-1, num_filters_total])
 
         # Add dropout
-        with tf.name_scope("dropout"):
+        with tf.variable_scope("dropout"):
             h_drop = tf.nn.dropout(h_pool_flat, self.dropout)
 
         # softmax, i.e. softmax(WX + b)
-        with tf.name_scope('softmax_linear'):
-            W = tf.get_variable(
-                "W",
+        with tf.variable_scope('softmax_linear'):
+            WW = tf.get_variable(
+                "WW",
                 shape=[num_filters_total, self.num_cats],
                 initializer=tf.contrib.layers.xavier_initializer())
             b = tf.Variable(tf.constant(0.1, shape=[self.num_cats]), name="b")
-            softmax_linear = tf.nn.xw_plus_b(h_drop, W, b, name="scores")
+            softmax_linear = tf.nn.xw_plus_b(h_drop, WW, b, name="scores")
 
         return softmax_linear

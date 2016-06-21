@@ -16,9 +16,9 @@ import tensorflow as tf
 #########################################
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string("data_dir", "data/", 'path of data directory.')
-tf.app.flags.DEFINE_integer(
-    "num_cats", 5,
-    "the number of categories of dataset.")
+tf.app.flags.DEFINE_integer("num_cats", 5,
+                            "the number of categories of dataset.")
+tf.app.flags.DEFINE_string("dataset_type", "ukwa", 'ukwa, dmoz, mcafee')
 # tf.app.flags.DEFINE_string(
 #     "categories", "Arts,Business,Computers,Health,Sports",
 #     'categories name list, divided by comma, no space in between.')
@@ -43,9 +43,8 @@ tf.app.flags.DEFINE_integer(
 # tf.app.flags.DEFINE_integer(
 #     "target_len", "200",
 #     'the max #tokens of node string, 100 for 512 characters string.')
-tf.app.flags.DEFINE_integer(
-    "html_len", "512",
-    'the number of tokens in one html string.')
+tf.app.flags.DEFINE_integer("html_len", "200",
+                            'the number of tokens in one html string.')
 tf.app.flags.DEFINE_integer("num_train_f", "4",
                             'number of training files per category.')
 tf.app.flags.DEFINE_integer("num_test_f", "1",
@@ -58,15 +57,38 @@ tf.app.flags.DEFINE_string("wv_db", "dict", 'sqlite or dict')
 # global variables
 #########################################
 CUR_TIME = time.strftime("%Y-%m-%d_%H-%M-%S")
-if FLAGS.num_cats == 5:
-    CATEGORIES = "Arts,Business,Computers,Health,Sports".split(',')
-elif FLAGS.num_cats == 10:
-    CATEGORIES = "Arts,Business,Computers,Health,Sports,Society,Science,Recreation,Shopping,Games".split(',')
+# if FLAGS.dataset_type == "ukwa":
+#     CATEGORIES = "Arts,Business,Computers,Health,Sports".split(',')
+# elif FLAGS.dataset_type == "dmoz" and FLAGS.num_cats == 5:
+#     CATEGORIES = "Arts,Business,Computers,Health,Sports".split(',')
+# elif FLAGS.dataset_type == "dmoz" and FLAGS.num_cats == 10:
+#     CATEGORIES = "Arts,Business,Computers,Health,Sports,Society,Science,Recreation,Shopping,Games".split(',')
+# else:
+#     raise ValueError("wrong num_cats: " + FLAGS.num_cats)
+if FLAGS.dataset_type == 'dmoz':
+    if FLAGS.num_cats == 5:
+        CATEGORIES = ["Arts", "Business", "Computers", "Health", "Sports"]
+    elif FLAGS.num_cats == 10:
+        CATEGORIES = ["Arts", "Business", "Computers", "Health", 'Society',
+                      'Science', 'Sports', 'Recreation', 'Shopping', 'Games']
+        # CATEGORIES = list(set(["Arts", "Business", "Computers", "Health",
+        #                        'Society', 'Science', 'Sports', 'Recreation',
+        #                        'Shopping', 'Reference', 'Games', 'Home']))
+    else:
+        raise ValueError("cat_num wrong value: " + FLAGS.cat_num)
+    DMOZ_JSON = "dmoz_{}.json".format(len(CATEGORIES))
+elif FLAGS.dataset_type == 'ukwa':
+    CATEGORIES = ['Arts & Humanities', 'Government, Law & Politics',
+                  'Society & Culture', 'Business, Economy & Industry',
+                  'Science & Technology', 'Medicine & Health',
+                  'Education & Research', 'Company Web Sites',
+                  'Digital Society', 'Sports and Recreation']
+    DMOZ_JSON = "ukwa_{}.json".format(len(CATEGORIES))
 else:
-    raise ValueError("wrong num_cats: " + FLAGS.num_cats)
+    raise ValueError("dataset_type has wrong value: {}".format(
+        FLAGS.dataset_type))
 
-
-DMOZ_JSON = "dmoz_{}.json".format(len(CATEGORIES))
+# DMOZ_JSON = "dmoz_{}.json".format(len(CATEGORIES))
 DMOZ_SQLITE = "dmoz.sqlite"
 
 WV_FILE = 'glove.6B.50d.txt'
@@ -184,13 +206,18 @@ def _clean_url(url):
     only keep first level folder.
     like: www.yuhui.com/haha
     """
-    url_p = urlparse(url)
-    netloc = url_p.netloc.split(':')[0]
-    # get the first level path
-    path = ''
-    if url_p.path:
-        path = url_p.path.split('/')[1]
-    url_clean = netloc + '/' + path
+    try:
+        url_p = urlparse(url)
+        netloc = url_p.netloc.split(':')[0]
+        # get the first level path
+        path = ''
+        if url_p.path:
+            # print ("url:", url)
+            path = url_p.path.split('/')[1]
+        url_clean = netloc + '/' + path
+    except ValueError:
+        logging.info("exception: {}".format(url))
+        return url
     return url_clean
 
 
@@ -559,6 +586,7 @@ class WvDB(object):
             [word_vectors]
         """
         vectors = []
+        num_known = 0
         # tokenize html string
         s_tokens = nltk.word_tokenize(string.lower())
         logging.debug("s_tokens length: {}".format(len(s_tokens)))
@@ -566,8 +594,16 @@ class WvDB(object):
         if str_len >= 0:
             if len(s_tokens) > str_len:
                 s_tokens = s_tokens[:str_len]
+        # print("tokens: {}".format(s_tokens))
+        tokens_test = []
         for token in s_tokens:
-            vector = self.dict.get(token, self.unknown)
+            # vector = self.dict.get(token, self.unknown)
+            if token in self.dict:
+                vector = self.dict[token]
+                num_known += 1
+                tokens_test.append(token)
+            else:
+                vector = self.unknown
             # vector = self.unknown
             vectors.append(vector)
             # logging.debug("vector: {}".format(vector))
@@ -576,6 +612,10 @@ class WvDB(object):
         if str_len >= 0:
             if len(vectors) < str_len:
                 vectors.extend([self.unknown] * (str_len - len(vectors)))
+            # print("tokens_test: {}".format(tokens_test))
+            # print("s_tokens len: {}".format(len(s_tokens)))
+            logging.info("num_known/total_words = {}".format(num_known /
+                                                             len(s_tokens)))
         return vectors
 
     def close_sqlite(self):

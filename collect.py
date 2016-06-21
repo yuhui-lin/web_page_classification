@@ -28,7 +28,8 @@ PARSER.add_argument("--data_dir",
 # CAT_FETCH is subset of CATEGORIES, only fetch those cats
 PARSER.add_argument("--cat_fetch",
                     type=str,
-                    default="Business,Society,Science,Recreation,Shopping,Games",
+                    default="",
+                    # default="Business,Society,Science,Recreation,Shopping,Games",
                     # default="Arts,Business,Computers,Health",
                     help="cats to be print, no space, empty to fetch all")
 PARSER.add_argument("--pages_per_file",
@@ -57,8 +58,8 @@ PARSER.add_argument("--max_child",
                     help="max # for children")
 PARSER.add_argument("--max_html_length",
                     type=int,
-                    default=512,
-                    help="max length of each neighbors html length")
+                    default=1500,
+                    help="max number of characters of each neighbors html length")
 PARSER.add_argument("--dataset_type",
                     type=str,
                     default="ukwa",
@@ -312,10 +313,19 @@ def parse_ukwa(ukwa_tsv, ukwa_json):
         for row in tsvin:
             p_cats.append(row[0])
             if row[0] in CATEGORIES:
-                ukwa[row[0]].append({"id": 0,
-                                     "url": row[3],
-                                     "title": row[2],
-                                     "desc": ''})
+                try:
+                    # print ("row:", row)
+                    url = row[3]
+                    if not url.startswith("http"):
+                        # print("not http: " + url)
+                        url = row[-1]
+                        print("new url:" + url)
+                    ukwa[row[0]].append({"id": 0,
+                                        "url": url,
+                                        "title": row[2],
+                                        "desc": ''})
+                except Exception:
+                    logging.info("row exception:{}".format(row))
 
     cnt = Counter(p_cats)
     logging.info("count:{}".format(Counter(cnt)))
@@ -442,18 +452,21 @@ def google_urls(urls, max_num=10):
     return urls
 
 
-def create_nodes(pages):
+def create_nodes(pages, init_id=0):
     """
     args:
         [[url, html_text]]
+        init_id: start id number of relatives
     """
     nodes = []
+    count_id = init_id
     for page in pages:
         node = {}
-        node["r_id"] = create_nodes.count
+        node["r_id"] = count_id
         node["r_url"] = page[0]
         node["r_html"] = page[1]
-        create_nodes.count += 1
+        # create_nodes.count += 1
+        count_id += 1
         nodes.append(node)
     return nodes
 
@@ -499,11 +512,14 @@ def parse_htmls(htmls, max_len=-1, dmoz=None):
             new_html.append('<core>' + dmoz[0] + '. ' + dmoz[1] + '</core>')
 
         if html[0]:
-            new_html.append('<url>' + html[0] + '</url>')
+            s = html[0].replace('/', ' ')
+            s = s.replace('.', ' ')
+            s = s.replace(':', ' ')
+            new_html.append('<url>' + s + '<url>')
 
         title = soup.title
         if title:
-            new_html.append('<title>' + title.string.strip() + '</title>')
+            new_html.append('<title>' + title.string.strip() + '<title>')
 
         meta = []
         for a in soup.find_all('meta'):
@@ -511,20 +527,20 @@ def parse_htmls(htmls, max_len=-1, dmoz=None):
                                       a['name'] == 'keywords'):
                 meta.append(a['content'].strip())
         if meta:
-            new_html.append('<meta>' + ' '.join(meta) + '</meata>')
+            new_html.append('<meta>' + ' '.join(meta) + '<meata>')
 
         heading = []
         for a in soup.find_all(re.compile("h[1-5]")):
             heading.append(a.get_text().strip())
         if heading:
-            new_html.append('<heading>' + ' '.join(heading) + '</heading>')
+            new_html.append('<heading>' + ' '.join(heading) + '<heading>')
 
         paragraph = []
         for a in soup.find_all('p'):
             paragraph.append(a.get_text().strip())
         if paragraph:
             new_html.append('<paragraph>' + ' '.join(paragraph) +
-                            '</paragraph>')
+                            '<paragraph>')
 
         tmp = ' '.join(new_html)
         if max_len > 0:
@@ -552,7 +568,7 @@ def fetch_single_page(url, timeout):
     assert isinstance(page['html'], str), "error: main_pages not string"
     logging.debug("add main")
 
-    create_nodes.count = 0
+    # create_nodes.count = 0
     # page["edges"] = []
     page["relatives"] = []
 

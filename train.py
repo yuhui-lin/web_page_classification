@@ -35,13 +35,25 @@ tf.app.flags.DEFINE_float("dropout_keep_prob", 0.5,
                           "Dropout keep probability (default: 0.5)")
 tf.app.flags.DEFINE_integer('max_steps', 1000000,
                             """Number of total batches to run.""")
+tf.app.flags.DEFINE_integer(
+    'num_epochs_per_decay', 20,
+    "number of epochs for every learning rate decay.")
+tf.app.flags.DEFINE_float(
+    "lr_decay_factor", 0.5,
+    "learning rate decay factor.")
+tf.app.flags.DEFINE_float(
+    "initial_lr", 0.01,
+    "inital learning rate.")
+tf.app.flags.DEFINE_integer(
+    'min_lr', 8,
+    "e^-8, minimum learning rate")
 
 # Misc Parameters
 tf.app.flags.DEFINE_boolean("allow_soft_placement", True,
                             "Allow device soft device placement")
 tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
-tf.app.flags.DEFINE_integer('print_step', 2,
+tf.app.flags.DEFINE_integer('print_step', 1,
                             """Number of steps to print current state.""")
 tf.app.flags.DEFINE_integer('summary_step', 10,
                             """Number of steps to write summaries.""")
@@ -52,6 +64,7 @@ tf.app.flags.DEFINE_integer(
     "Number of maximum checkpoints to keep. default: 10")
 tf.app.flags.DEFINE_integer(
     'sleep', 0, "the number of seconds to sleep between steps. 0, 1, 2...")
+
 
 #########################################
 # global variables
@@ -92,7 +105,9 @@ def train(model_type):
                                  save_model_secs=0)
 
         # Start running operations on the Graph.
+        # sess = sv.prepare_or_wait_for_session()
         sess = sv.prepare_or_wait_for_session(config=tf.ConfigProto(
+            allow_soft_placement=FLAGS.allow_soft_placement,
             log_device_placement=FLAGS.log_device_placement))
         # with sv.managed_session("") as sess:
 
@@ -204,7 +219,7 @@ def main(argv=None):
                 filename=log_file)
     logging.info("\nall arguments:")
     for attr, value in sorted(FLAGS.__flags.items()):
-        logging.info("{}={}".format(attr.upper(), value))
+        logging.info("{}={}".format(attr, value))
     logging.info("")
 
     # file handling
@@ -224,7 +239,7 @@ def main(argv=None):
     elif FLAGS.model_type == "rnn":
         model_type = models.rnn.RNN
     elif FLAGS.model_type == "rrnn":
-        model_type = models.rnn.RRNN
+        model_type = models.rrnn.RRNN
     else:
         raise ValueError("wrong model_name:" + FLAGS.mode)
 

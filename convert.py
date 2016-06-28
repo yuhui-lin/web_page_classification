@@ -119,13 +119,14 @@ def get_vocab():
     return vocab
 
 
-def _int64_feature(value):
-    return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
+def _int64_feature(v):
+    value = [v]
+    return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
 
 
 def _float_feature(value):
     """only for list of float, one dimension!"""
-    return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
+    return tf.train.Feature(float_list=tf.train.FloatList(value=value))
 
 
 def _bytes_feature(value):
@@ -139,6 +140,15 @@ def _vec_str(vec, dtype=np.float32):
     #     logging.debug("vec: {}".format(vec[0]))
     tmp = np.array(vec, dtype=dtype)
     return tmp.tostring()
+
+
+def _vec_float(vec, dtype=np.float32):
+    """word vectors to numpy string."""
+    logging.debug("wv to np: vec length: {}".format(len(vec)))
+    # if len(vec):
+    #     logging.debug("vec: {}".format(vec[0]))
+    tmp = np.array(vec, dtype=dtype)
+    return np.reshape(tmp, (-1)).tolist()
 
 
 def write_tfr(tfr_file, cat_id, target_wv, unlabeled_wv, labeled_p):
@@ -161,9 +171,9 @@ def write_tfr(tfr_file, cat_id, target_wv, unlabeled_wv, labeled_p):
             # 'labeled': _int64_feature(labeled_p[index])
             'label': _int64_feature(cat_id),
             'target': _bytes_feature(_vec_str(target_wv[index])),
-            'unlabeled': _bytes_feature(_vec_str(unlabeled_wv[index])),
+            'unlabeled': _float_feature(_vec_float(unlabeled_wv[index])),
             'un_len': _int64_feature(len(unlabeled_wv[index])),
-            'labeled': _bytes_feature(_vec_str(labeled_p[index], np.int32)),
+            'labeled': _float_feature(_vec_float(labeled_p[index])),
             'la_len': _int64_feature(len(labeled_p[index]))
         }))
         writer.write(example.SerializeToString())
@@ -614,8 +624,8 @@ class WvDB(object):
                 vectors.extend([self.unknown] * (str_len - len(vectors)))
             # print("tokens_test: {}".format(tokens_test))
             # print("s_tokens len: {}".format(len(s_tokens)))
-            logging.info("num_known/total_words = {}".format(num_known /
-                                                             len(s_tokens)))
+            logging.info("num_known/total_words = {}".format(num_known / len(
+                s_tokens)))
         return vectors
 
     def close_sqlite(self):

@@ -12,7 +12,7 @@ class RNN(model.Model):
     """recurrent neural network model.
     classify web page only based on target html."""
 
-    def inference(self, page_batch):
+    def test_bi_rnn(self, page_batch):
         """Build the RNN model.
         Args:
             page_batch: Sequences returned from inputs_train() or inputs_eval.
@@ -22,12 +22,13 @@ class RNN(model.Model):
         target_batch, unlabeled_batch, labeled_batch = page_batch
 
         num_layers = 1
-        hidden_layers = FLAGS.html_len
+        hidden_layers = FLAGS.we_dim
         num_local = 1024
 
-        # list[html_len, batch_size, we_dim]
+        # [batch_size, html_len, 1, we_dim] to
+        # list[batch_size, we_dim], length:html_len
         inputs_rnn = [tf.squeeze(input_, [1])
-                      for input_ in tf.split(1, FLAGS.we_dim, target_batch)]
+                      for input_ in tf.split(1, FLAGS.html_len, target_batch)]
 
         with tf.variable_scope("BiRNN_FW"):
             cell_fw = tf.nn.rnn_cell.GRUCell(hidden_layers)
@@ -66,10 +67,10 @@ class RNN(model.Model):
         # local1
         with tf.variable_scope('local1') as scope:
             weights = self._variable_with_weight_decay('weights',
-                                                       shape=[dim, 1024],
+                                                       shape=[dim, num_local],
                                                        stddev=0.02,
                                                        wd=None)
-            biases = self._variable_on_cpu('biases', [1024],
+            biases = self._variable_on_cpu('biases', [num_local],
                                            tf.constant_initializer(0.02))
             local1 = tf.nn.tanh(
                 tf.matmul(xi, weights) + biases,
@@ -104,3 +105,59 @@ class RNN(model.Model):
                 name=scope.name)
             self._activation_summary(softmax_linear)
         return softmax_linear
+
+    def rnn(self, sequences):
+        """Build the RNN model.
+        Args:
+            page_batch: Sequences returned from inputs_train() or inputs_eval.
+        Returns:
+            Logits.
+        """
+
+        # [batch_size, html_len, we_dim] to
+        # list[batch_size, we_dim], length:html_len
+        inputs_rnn = [tf.squeeze(input_, [1])
+                      for input_ in tf.split(1, FLAGS.html_len, sequences)]
+
+        with tf.variable_scope("RNN"):
+            cell_fw = tf.nn.rnn_cell.GRUCell(self.hidden_layers)
+            cells_fw = tf.nn.rnn_cell.MultiRNNCell([cell_fw] * self.num_layers)
+            # initial_state_fw = cells_fw.zero_state(FLAGS.batch_size,
+            #                                        tf.float32)
+            outputs_fw, state_fw = tf.nn.rnn(cells_fw,
+                                             inputs_rnn,
+                                             # initial_state=initial_state_fw,
+                                             dtype=tf.float32)
+            # _activation_summary(outputs_fw)
+
+        net_shape = state_fw.get_shape().as_list()
+        softmax_len = net_shape[1]
+        # net = tf.reshape(state_fw, [-1, softmax_len])
+        net = state_fw
+
+        # softmax, i.e. softmax(WX + b)
+        with tf.variable_scope('softmax_linear'):
+            WW = tf.get_variable(
+                "WW",
+                shape=[softmax_len, self.num_cats],
+                initializer=tf.contrib.layers.xavier_initializer())
+            b = self._variable_on_cpu('b',
+                                      [self.num_cats],
+                                      tf.constant_initializer(value=0.1))
+            softmax_linear = tf.nn.xw_plus_b(net, WW, b, name="scores")
+
+        return softmax_linear
+
+    def inference(self, page_batch):
+        """Build the RNN model.
+        Args:
+            page_batch: Sequences returned from inputs_train() or inputs_eval.
+        Returns:
+            Logits.
+        """
+        self.num_layers = 1
+        self.hidden_layers = FLAGS.we_dim
+
+        target_batch, un_batch, un_len, la_batch, la_len = page_batch
+
+        return self.rnn(target_batch)

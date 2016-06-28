@@ -18,12 +18,10 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string(
     'data_dir', 'data/',
     'Directory to download data files and write the converted result')
-tf.app.flags.DEFINE_string(
-    'tfr_folder', 'TFR_test',
-    'tfr folder name under data_dir')
+tf.app.flags.DEFINE_string('tfr_folder', 'TFR_test',
+                           'tfr folder name under data_dir')
 tf.app.flags.DEFINE_integer(
-    'we_dim', 50,
-    'word embedding dimensionality. 50, 100, 150, 200...')
+    'we_dim', 50, 'word embedding dimensionality. 50, 100, 150, 200...')
 tf.app.flags.DEFINE_integer(
     'num_read_threads', 5,
     'number of reading threads to shuffle examples between files.')
@@ -33,12 +31,12 @@ tf.app.flags.DEFINE_integer(
 tf.app.flags.DEFINE_integer(
     "num_cats", 10,
     "the nuber of categories of dataset.")
-tf.app.flags.DEFINE_integer(
-    "num_train_examples", 200,
-    "number of training examples per epoch.")
-tf.app.flags.DEFINE_integer(
-    "num_test_examples", 50,
-    "number of testing examples per epoch.")
+tf.app.flags.DEFINE_integer("num_train_examples", 200,
+                            "number of training examples per epoch.")
+tf.app.flags.DEFINE_integer("num_test_examples", 50,
+                            "number of testing examples per epoch.")
+tf.app.flags.DEFINE_integer("max_relatives", 20,
+                            "maximum number of every kinds of relatives")
 
 #########################################
 # global variables
@@ -47,10 +45,10 @@ tf.app.flags.DEFINE_integer(
 # Constants used for dealing with the files, matches convert_to_records.
 TFR_SUFFIX = '.TFR'
 
-
 #########################################
 # functions
 #########################################
+
 
 def read_and_decode(filename_queue):
     """read data from one file and decode to tensors."""
@@ -62,35 +60,50 @@ def read_and_decode(filename_queue):
         features={
             'label': tf.FixedLenFeature(
                 [], tf.int64),
-            'target': tf.FixedLenFeature([], tf.string),
-            'unlabeled': tf.VarLenFeature(tf.string),
-            'labeled': tf.VarLenFeature(tf.string),
+            'target': tf.FixedLenFeature(
+                [], tf.string),
+            'un_len': tf.FixedLenFeature(
+                [], tf.int64),
+            'unlabeled': tf.VarLenFeature(tf.float32),
+            'la_len': tf.FixedLenFeature(
+                [], tf.int64),
+            'labeled': tf.VarLenFeature(tf.float32),
         })
 
     t_dense = features['target']
     # decode it using the same numpy type in convert !!
     t_decode = tf.decode_raw(t_dense, tf.float32)
-    # set_shape and reshape are both necessary!!!
-    t_decode.set_shape([FLAGS.html_len *  FLAGS.we_dim])
+    # set_shape and reshape are both necessary ???
+    t_decode.set_shape([FLAGS.html_len * FLAGS.we_dim])
     # t_cast = tf.cast(t_decode, tf.float32)
     t_reshape = tf.reshape(t_decode, [FLAGS.html_len, FLAGS.we_dim])
 
-    # u_dense = tf.sparse_tensor_to_dense(features['unlabeled'])
-    # u_decode = tf.decode_raw(u_dense, tf.unit8)
-    # u_cast = tf.cast(u_decode, tf.float32)
-    # u_reshape = tf.reshape(u_cast, [-1, FLAGS.node_length, FLAGS.embed_length])
-    #
-    # l_dense = tf.sparse_tensor_to_dense(features['labeled'])
-    # l_decode = tf.decode_raw(l_dense, tf.unit8)
-    # l_cast = tf.cast(l_decode, tf.int32)
-    # l_reshape = tf.reshape(l_cast, [-1, FLAGS.num_cats])
+    un_len = tf.cast(features['un_len'], tf.int32)
+
+    un_rel = features['unlabeled']
+    # u_decode = tf.decode_raw(features['unlabeled'], tf.float32)
+    # un_rel = tf.sparse_tensor_to_dense(un_rel)
+    # # u_dense.set_shape(tf.pack([un_len, FLAGS.html_len, FLAGS.we_dim]))
+    # # u_reshape = tf.reshape(u_dense, [-1, FLAGS.html_len, FLAGS.we_dim])
+    # un_rel = tf.reshape(un_rel,
+    #                     tf.pack([un_len, FLAGS.html_len, FLAGS.we_dim]))
+    # un_rel = tf.pad(un_rel, [[0, FLAGS.max_relatives], [0, 0], [0, 0]])
+    # un_rel = tf.slice(un_rel, [0, 0, 0], [FLAGS.max_relatives, FLAGS.html_len,
+    #                                       FLAGS.we_dim])
+
+    la_len = tf.cast(features['la_len'], tf.int32)
+
+    la_rel = features['labeled']
+    # la_rel = tf.sparse_tensor_to_dense(la_rel)
+    # la_rel = tf.reshape(la_rel, tf.pack([la_len, FLAGS.num_cats]))
+    # la_rel = tf.pad(la_rel, [[0, FLAGS.max_relatives], [0, 0]])
+    # la_rel = tf.slice(la_rel, [0, 0], [FLAGS.max_relatives, FLAGS.num_cats])
 
     label = tf.cast(features['label'], tf.int32)
 
-
-    u_reshape = tf.zeros([3, 4], tf.int32)
-    l_reshape = tf.zeros([3, 4], tf.int32)
-    return t_reshape, u_reshape, l_reshape, label
+    # u_reshape = tf.zeros([3, 4], tf.int32)
+    # l_reshape = tf.zeros([3, 4], tf.int32)
+    return t_reshape, un_rel, un_len, la_rel, la_len, label
 
 
 def inputs(datatype, batch_size, num_epochs=None, min_shuffle=1):
@@ -131,11 +144,11 @@ def inputs(datatype, batch_size, num_epochs=None, min_shuffle=1):
         # We run this in two threads to avoid being a bottleneck.
         # shuffling of examples between files, use shuffle_batch_join
         capacity = min_shuffle + 3 * batch_size
-        t_batch, u_batch, l_batch, label_batch = tf.train.shuffle_batch_join(
+        t_batch, u_batch, u_len, l_batch, l_len, label_batch = tf.train.shuffle_batch_join(
             page_list,
             batch_size=batch_size,
             capacity=capacity,
             # Ensures a minimum amount of shuffling of examples.
             min_after_dequeue=min_shuffle)
         # return t_batch, u_batch, l_batch, label_batch
-        return [t_batch, u_batch, l_batch], label_batch
+        return [t_batch, u_batch, u_len, l_batch, l_len], label_batch

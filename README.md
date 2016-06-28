@@ -15,13 +15,14 @@ pip install -r requirements.txt
 ```
 python -m collect --data_dir ~/Downloads/wpc --dataset_type dmoz --max_file_num 5
 python -m collect --data_dir ~/Downloads/wpc --pages_per_file 100 --max_file_num 5 --dataset_type dmoz --cat_num 5
-python -m collect --data_dir ~/Downloads/wpc --pages_per_file 3 --max_file_num 2 --dataset_type dmoz
+python -m collect --data_dir ~/Downloads/wpc --pages_per_file 2000 --max_file_num 5 --dataset_type dmoz --cat_num 5
 python -m collect --data_dir ~/Downloads/wpc --pages_per_file 100 --max_file_num 5 --dataset_type ukwa
 
 python -m convert --data_dir ~/Downloads/wpc --html_folder html_
-python -m convert --data_dir ~/Downloads/wpc --dataset_type dmoz --html_folder html_test 
+python -m convert --data_dir ~/Downloads/wpc --dataset_type dmoz --num_cats 5 --html_folder html_test 
 
-python -m train --data_dir ~/Downloads/wpc/ --model_type cnn
+python -m train --data_dir ~/Downloads/wpc/ --num_cats 5 --model_type cnn --tfr_folder TFR_5-2500
+
 python -m eval --data_dir ~/Downloads/wpc/ --model_type cnn --train_dir ~/Downloads/wpc/cnn/outputs/
 ```
 

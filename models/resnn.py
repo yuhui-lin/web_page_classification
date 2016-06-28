@@ -18,19 +18,16 @@ class ResNN(model.Model):
     """Residual neural network model.
     classify web page only based on target html."""
 
-    def inference(self, page_batch):
+    def resnn(self, sequences):
         """Build the resnn model.
         Args:
             page_batch: Sequences returned from inputs_train() or inputs_eval.
         Returns:
             Logits.
         """
-        target_batch, unlabeled_batch, labeled_batch = page_batch
 
         # [batch_size, html_len, 1, we_dim]
-        target_expanded = tf.expand_dims(target_batch, 2)
-        activation = tf.nn.relu
-        norm_decay = 0.99
+        target_expanded = tf.expand_dims(sequences, 2)
 
         # Configurations for each bottleneck block.
         BottleneckBlock = namedtuple(
@@ -52,9 +49,9 @@ class ResNN(model.Model):
                                 64,
                                 [7, 1],
                                 stride=[2, 1],
-                                activation_fn=activation,
+                                activation_fn=self.activation,
                                 normalizer_fn=batch_norm,
-                                normalizer_params={'decay': norm_decay})
+                                normalizer_params={'decay': self.norm_decay})
 
         # Max pool
         net = tf.nn.max_pool(net,
@@ -68,9 +65,9 @@ class ResNN(model.Model):
                                 blocks[0].num_filters,
                                 [1, 1],
                                 padding='VALID',
-                                activation_fn=activation,
+                                activation_fn=self.activation,
                                 normalizer_fn=batch_norm,
-                                normalizer_params={'decay': norm_decay})
+                                normalizer_params={'decay': self.norm_decay})
 
         # Create each bottleneck building block for each layer
         for block_i, block in enumerate(blocks):
@@ -85,9 +82,9 @@ class ResNN(model.Model):
                         block.bottleneck_size,
                         [1, 1],
                         padding='VALID',
-                        activation_fn=activation,
+                        activation_fn=self.activation,
                         normalizer_fn=batch_norm,
-                        normalizer_params={'decay': norm_decay})
+                        normalizer_params={'decay': self.norm_decay})
 
                 with tf.variable_scope(name + '/conv_bottleneck'):
                     conv = convolution2d(
@@ -95,9 +92,9 @@ class ResNN(model.Model):
                         block.bottleneck_size,
                         [3, 1],
                         padding='SAME',
-                        activation_fn=activation,
+                        activation_fn=self.activation,
                         normalizer_fn=batch_norm,
-                        normalizer_params={'decay': norm_decay})
+                        normalizer_params={'decay': self.norm_decay})
 
                 # 1x1 convolution responsible for restoring dimension
                 with tf.variable_scope(name + '/conv_out'):
@@ -106,9 +103,9 @@ class ResNN(model.Model):
                         block.num_filters,
                         [1, 1],
                         padding='VALID',
-                        activation_fn=activation,
+                        activation_fn=self.activation,
                         normalizer_fn=batch_norm,
-                        normalizer_params={'decay': norm_decay})
+                        normalizer_params={'decay': self.norm_decay})
 
                 # shortcut connections that turn the network into its counterpart
                 # residual function (identity shortcut)
@@ -122,9 +119,9 @@ class ResNN(model.Model):
                         net,
                         next_block.num_filters,
                         [1, 1],
-                        activation_fn=activation,
+                        activation_fn=self.activation,
                         normalizer_fn=batch_norm,
-                        normalizer_params={'decay': norm_decay})
+                        normalizer_params={'decay': self.norm_decay})
             except IndexError:
                 pass
 
@@ -144,7 +141,22 @@ class ResNN(model.Model):
                 "WW",
                 shape=[softmax_len, self.num_cats],
                 initializer=tf.contrib.layers.xavier_initializer())
-            b = tf.Variable(tf.constant(0.1, shape=[self.num_cats]), name="b")
+            b = self._variable_on_cpu('b',
+                                      [self.num_cats],
+                                      tf.constant_initializer(value=0.1))
             softmax_linear = tf.nn.xw_plus_b(net, WW, b, name="scores")
 
         return softmax_linear
+
+    def inference(self, page_batch):
+        """Build the resnn model.
+        Args:
+            page_batch: Sequences returned from inputs_train() or inputs_eval.
+        Returns:
+            Logits.
+        """
+        self.activation = tf.nn.relu
+        self.norm_decay = 0.99
+        target_batch, un_batch, un_len, la_batch, la_len = page_batch
+
+        return self.resnn(target_batch)

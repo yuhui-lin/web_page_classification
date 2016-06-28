@@ -18,18 +18,15 @@ FLAGS = tf.app.flags.FLAGS
 #########################################
 # global variables
 #########################################
-FEATURE_NUM = 256
+# FEATURE_NUM = 256
 
 # Constants describing the training process.
-MOVING_AVERAGE_DECAY = 0.9999  # The decay to use for the moving average.
-NUM_EPOCHS_PER_DECAY = 40.0  # Epochs after which learning rate decays.
-LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
-INITIAL_LEARNING_RATE = 0.01  # Initial learning rate.
+# MOVING_AVERAGE_DECAY = 0.9999  # The decay to use for the moving average.
 
 # If a model is trained with multiple GPUs, prefix all Op names with tower_name
 # to differentiate the operations. Note that this prefix is removed from the
 # names of the summaries when visualizing a model.
-TOWER_NAME = 'tower'
+# TOWER_NAME = 'tower'
 
 
 #########################################
@@ -40,20 +37,24 @@ class Model(object):
 
     def __init__(self, is_train=False):
         self.num_cats = FLAGS.num_cats
+        self.NUM_EPOCHS_PER_DECAY = FLAGS.num_epochs_per_decay
+        self.LEARNING_RATE_DECAY_FACTOR = FLAGS.lr_decay_factor
+        self.INITIAL_LEARNING_RATE = FLAGS.initial_lr
+        self.min_lr = 0.1**FLAGS.min_lr
 
         if is_train:
             # build training graph
             self.dropout = FLAGS.dropout_keep_prob
 
-            self.global_step = tf.Variable(0,
-                                           trainable=False,
-                                           name="global_step")
+            self.global_step = tf.get_variable(
+                "global_step",
+                initializer=tf.zeros_initializer(
+                    [],
+                    dtype=tf.int64),
+                trainable=False)
 
             # get input data
-            # sequences, labels = model.inputs_train()
-            # target_batch, unlabeled_batch, labeled_batch, label_batch = model.inputs_train()
             page_batch, label_batch = self.inputs_train()
-            # logits = model.get_embedding(sequences)
 
             # Build a Graph that computes the logits predictions from the
             self.logits = self.inference(page_batch)
@@ -110,7 +111,7 @@ class Model(object):
             var = tf.get_variable(name, shape, initializer=initializer)
         return var
 
-    def _variable_with_weight_decay(self, name, shape, stddev, wd):
+    def _variable_with_weight_decay(self, name, shape, stddev, wd=None):
         """Helper to create an initialized Variable with weight decay.
         Note that the Variable is initialized with a truncated normal distribution.
         A weight decay is added only if one is specified.
@@ -128,8 +129,10 @@ class Model(object):
             shape,
             tf.truncated_normal_initializer(stddev=stddev))
         if wd is not None:
+            # weight_decay = tf.mul(tf.constant(0.1), wd, name='weight_loss')
             weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
             tf.add_to_collection('losses', weight_decay)
+            # tf.add_to_collection('losses', wd)
         return var
 
     def inputs_train(self):
@@ -154,6 +157,54 @@ class Model(object):
         raise NotImplementedError("Should have implemented this")
         return
 
+    def high_classifier(self, page_batch, low_classifier):
+        """high level classifier."""
+        target_batch, un_batch, un_len, la_batch, la_len = page_batch
+
+        with tf.variable_scope("low_classifier") as low_scope:
+            # [batch_size, 1, html_len, we_dim]
+            target_exp = tf.expand_dims(target_batch, 1)
+            # [batch_size, 1, num_cats]
+            target_logits = tf.map_fn(low_classifier,
+                                      target_exp,
+                                      name="map_fn")
+
+            # reuse parameters for low_classifier
+            low_scope.reuse_variables()
+
+            un_rel = tf.sparse_tensor_to_dense(un_batch)
+            un_rel = tf.reshape(un_rel, [FLAGS.batch_size, -1, FLAGS.html_len,
+                                         FLAGS.we_dim])
+            # call low_classifier to classify relatives
+            # all relatives of one target composed of one batch
+            # [batch_size, num_len(variant), num_cats]
+            un_rel = tf.map_fn(low_classifier, un_rel, name="map_fn")
+
+        # labeled relatives
+        la_rel = tf.sparse_tensor_to_dense(la_batch)
+        la_rel = tf.reshape(la_rel, [FLAGS.batch_size, -1, FLAGS.num_cats])
+
+        # concat all inputs for high-level classifier RNN
+        # concat_inputs = tf.concat(1, [un_rel, target_logits])
+        concat_inputs = tf.concat(1, [un_rel, la_rel, target_logits])
+
+        # number of pages for each target
+        num_pages = tf.add(
+            tf.add(un_len, la_len),
+            tf.ones(
+                [FLAGS.batch_size],
+                dtype=tf.int32))
+
+        # high-level classifier - RNN
+        with tf.variable_scope("dynamic_rnn"):
+            cell = tf.nn.rnn_cell.GRUCell(num_units=FLAGS.num_cats)
+            outputs, state = tf.nn.dynamic_rnn(cell,
+                                               inputs=concat_inputs,
+                                               sequence_length=num_pages,
+                                               dtype=tf.float32)
+
+        return state
+
     def loss(self, logits, labels):
         """Add L2Loss to all the trainable variables.
         Add summary for "Loss" and "Loss/avg".
@@ -177,6 +228,7 @@ class Model(object):
         # The total loss is defined as the cross entropy loss plus all of the weight
         # decay terms (L2 loss).
         return tf.add_n(tf.get_collection('losses'), name='total_loss')
+        # return cross_entropy_mean
 
     def _add_loss_summaries(self, total_loss):
         """Add summaries for losses in CNN model.
@@ -215,47 +267,53 @@ class Model(object):
         """
         # Variables that affect learning rate.
         num_batches_per_epoch = FLAGS.num_train_examples / FLAGS.batch_size
-        decay_steps = int(num_batches_per_epoch * NUM_EPOCHS_PER_DECAY)
+        decay_steps = int(num_batches_per_epoch * self.NUM_EPOCHS_PER_DECAY)
 
         print("decay_steps: ", decay_steps)
         # Decay the learning rate exponentially based on the number of steps.
-        lr_decay = tf.train.exponential_decay(INITIAL_LEARNING_RATE,
+        lr_decay = tf.train.exponential_decay(self.INITIAL_LEARNING_RATE,
                                               global_step,
                                               decay_steps,
-                                              LEARNING_RATE_DECAY_FACTOR,
+                                              self.LEARNING_RATE_DECAY_FACTOR,
                                               staircase=True)
         # compare with 0.01 * 0.5^10
-        lr = tf.maximum(lr_decay, 0.0000001)
+        lr = tf.maximum(lr_decay, self.min_lr)
         tf.scalar_summary('learning_rate', lr)
 
         # Generate moving averages of all losses and associated summaries.
         loss_averages_op = self._add_loss_summaries(total_loss)
 
-        # Compute gradients.
-        with tf.control_dependencies([loss_averages_op]):
-            # opt = tf.train.GradientDescentOptimizer(lr)
-            opt = tf.train.MomentumOptimizer(lr, 0.9)
-            grads = opt.compute_gradients(total_loss)
+        # # Compute gradients.
+        # with tf.control_dependencies([loss_averages_op]):
+        #     # opt = tf.train.GradientDescentOptimizer(lr)
+        #     opt = tf.train.MomentumOptimizer(lr, 0.9)
+        #     grads = opt.compute_gradients(total_loss)
+        #
+        # # Apply gradients.
+        # apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
+        #
+        # # Add histograms for trainable variables.
+        # for var in tf.trainable_variables():
+        #     tf.histogram_summary(var.op.name, var)
+        #
+        # # Add histograms for gradients.
+        # for grad, var in grads:
+        #     if grad is not None:
+        #         tf.histogram_summary(var.op.name + '/gradients', grad)
+        #
+        # # # Track the moving averages of all trainable variables.
+        # # variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY,
+        # #                                                       global_step)
+        # # variables_averages_op = variable_averages.apply(tf.trainable_variables())
+        #
+        # with tf.control_dependencies([apply_gradient_op]):
+        #     train_op = tf.no_op(name='train')
 
-        # Apply gradients.
-        apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
-
-        # Add histograms for trainable variables.
-        for var in tf.trainable_variables():
-            tf.histogram_summary(var.op.name, var)
-
-        # Add histograms for gradients.
-        for grad, var in grads:
-            if grad is not None:
-                tf.histogram_summary(var.op.name + '/gradients', grad)
-
-        # # Track the moving averages of all trainable variables.
-        # variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY,
-        #                                                       global_step)
-        # variables_averages_op = variable_averages.apply(tf.trainable_variables())
-
-        with tf.control_dependencies([apply_gradient_op]):
-            train_op = tf.no_op(name='train')
+        # optimizer = tf.train.AdamOptimizer(1e-3)
+        optimizer = tf.train.AdamOptimizer(lr)
+        grads_and_vars = optimizer.compute_gradients(total_loss)
+        train_op = optimizer.apply_gradients(grads_and_vars,
+                                             global_step=global_step)
 
         return train_op
 
@@ -263,7 +321,11 @@ class Model(object):
         """run one step on one batch trainning examples."""
         step, _, loss_value, top_k = sess.run([self.global_step, self.train_op,
                                                self.loss, self.top_k_op])
+        # step, loss_value, top_k = sess.run([self.global_step,
+        #                                        self.loss, self.top_k_op])
+        # step, l = sess.run([self.global_step, self.logits])
         return step, loss_value, top_k
+        # return step, l, 2
 
     def eval_once(self, sess):
         # it's better to divide exactly with no remainder

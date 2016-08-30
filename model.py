@@ -223,11 +223,13 @@ class Model(object):
             name='cross_entropy_per_example')
         cross_entropy_mean = tf.reduce_mean(cross_entropy,
                                             name='cross_entropy')
-        tf.add_to_collection('losses', cross_entropy_mean)
+        # from tensorflow.python.ops import variables
+        # added to the collection GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
+        tf.add_to_collection('REGULARIZATION_LOSSES', cross_entropy_mean)
 
         # The total loss is defined as the cross entropy loss plus all of the weight
         # decay terms (L2 loss).
-        return tf.add_n(tf.get_collection('losses'), name='total_loss')
+        return tf.add_n(tf.get_collection('REGULARIZATION_LOSSES'), name='total_loss')
         # return cross_entropy_mean
 
     def _add_loss_summaries(self, total_loss):

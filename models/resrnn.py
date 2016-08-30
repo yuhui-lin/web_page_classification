@@ -20,7 +20,7 @@ class ResRNN(models.resnn.ResNN):
         Returns:
             Logits.
         """
-        self.activation = tf.nn.relu
-        self.norm_decay = 0.99
+        # self.activation = tf.nn.relu
+        # self.norm_decay = 0.99
 
         return self.high_classifier(page_batch, self.resnn)

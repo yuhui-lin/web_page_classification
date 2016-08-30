@@ -8,6 +8,9 @@ import time
 import logging
 import json
 import os
+import math
+from random import shuffle
+
 import numpy as np
 import tensorflow as tf
 
@@ -52,6 +55,9 @@ tf.app.flags.DEFINE_integer("num_test_f", "1",
 tf.app.flags.DEFINE_integer("max_workers", "8", 'max num of threads')
 tf.app.flags.DEFINE_string("dmoz_db", "dict", 'sqlite or dict')
 tf.app.flags.DEFINE_string("wv_db", "dict", 'sqlite or dict')
+tf.app.flags.DEFINE_boolean("verbose", False, "print extra thing")
+tf.app.flags.DEFINE_integer("pages_per_file", "4000",
+                            'number of web pages per TFRecords')
 
 #########################################
 # global variables
@@ -109,6 +115,13 @@ def read_json(filename):
         return data
     else:
         raise FileNotFoundError("json file:", filename)
+
+
+def write_json(filename, data):
+    logging.info("writing dmoz to" + filename)
+    with open(filename, 'w') as outfile:
+        json.dump(data, outfile, indent=4)
+    logging.info("finish writing to" + filename)
 
 
 def get_vocab():
@@ -169,7 +182,7 @@ def write_tfr(tfr_file, cat_id, target_wv, unlabeled_wv, labeled_p):
             # 'target': _float_feature(target_wv[index]),
             # 'unlabeled': _float_feature(unlabeled_wv[index]),
             # 'labeled': _int64_feature(labeled_p[index])
-            'label': _int64_feature(cat_id),
+            'label': _int64_feature(cat_id[index]),
             'target': _bytes_feature(_vec_str(target_wv[index])),
             'unlabeled': _float_feature(_vec_float(unlabeled_wv[index])),
             'un_len': _int64_feature(len(unlabeled_wv[index])),
@@ -233,6 +246,7 @@ def _clean_url(url):
 
 def split_single_page(page, dmoz_conn):
     """split a single web page data."""
+    label = page['label']
     target = page['html']
     unlabeled = []
     labeled = []
@@ -247,7 +261,7 @@ def split_single_page(page, dmoz_conn):
         else:
             # unlabeled
             unlabeled.append(node['r_html'])
-    return target, unlabeled, labeled
+    return target, unlabeled, labeled, label
 
 
 def split_pages(pages, dmoz_conn):
@@ -260,6 +274,7 @@ def split_pages(pages, dmoz_conn):
         labeled_p ([[labels in one hot encoding]])
     """
     logging.info("splitting nodes of pages")
+    labels = []
     target_p = []
     unlabeled_p = []
     labeled_p = []
@@ -282,7 +297,8 @@ def split_pages(pages, dmoz_conn):
                 target_p.append(result[0])
                 unlabeled_p.append(result[1])
                 labeled_p.append(result[2])
-    return target_p, unlabeled_p, labeled_p
+                labels.append(result[3])
+    return target_p, unlabeled_p, labeled_p, labels
 
 
 class DmozDB(object):
@@ -624,8 +640,9 @@ class WvDB(object):
                 vectors.extend([self.unknown] * (str_len - len(vectors)))
             # print("tokens_test: {}".format(tokens_test))
             # print("s_tokens len: {}".format(len(s_tokens)))
-            logging.info("num_known/total_words = {}".format(num_known / len(
-                s_tokens)))
+            if FLAGS.verbose:
+                logging.info("num_known/total_words = {}".format(
+                    num_known / len(s_tokens)))
         return vectors
 
     def close_sqlite(self):
@@ -674,6 +691,8 @@ def main(argv):
     os.mkdir(train_dir)
     test_dir = os.path.join(tfr_dir, 'test')
     os.mkdir(test_dir)
+    shuf_dir = os.path.join(tfr_dir, 'shuffle')
+    os.mkdir(shuf_dir)
 
     # loging
     log_file = os.path.join(tfr_dir, "log")
@@ -683,13 +702,12 @@ def main(argv):
         logging.info("{}={}".format(attr.upper(), value))
     logging.info("")
 
-    # local variables
-    dmoz_conn = DmozDB(FLAGS.dmoz_db)
-    wv_conn = WvDB(FLAGS.wv_db)
-    train_index = 0
-    test_index = 0
-
-    # main loop
+    # shuffle all data thoroughly
+    # all data stored in several train and test json files.
+    train_set = []
+    test_set = []
+    logging.info('')
+    logging.info('reading all data, split into train and test')
     for category in os.listdir(html_dir):
         cat_dir = os.path.join(html_dir, category)
         if os.path.isdir(cat_dir):
@@ -698,33 +716,79 @@ def main(argv):
             for j_file in os.listdir(cat_dir):
                 if ind < FLAGS.num_train_f + FLAGS.num_test_f and not j_file.startswith(
                         '.'):
-                    logging.info('')
-                    logging.info('train:{}, test:{}'.format(train_index,
-                                                            test_index))
                     # read single html json file
                     j_path = os.path.join(cat_dir, j_file)
                     pages = read_json(j_path)
-
-                    # check labeled relative nodes by looking up dmoz DB
-                    target_p, unlabeled_p, labeled_p = split_pages(pages,
-                                                                   dmoz_conn)
-
-                    # map word to word vector by looking up WE DB
-                    target_wv, unlabeled_wv = convert_wv(target_p, unlabeled_p,
-                                                         wv_conn)
+                    for page in pages:
+                        page['label'] = cat_id
 
                     # write to a single TFRecords file
                     if ind < FLAGS.num_train_f:
-                        tfr_file = os.path.join(train_dir,
-                                                str(train_index) + TFR_SUFFIX)
-                        train_index += 1
+                        train_set.extend(pages)
                     else:
-                        tfr_file = os.path.join(test_dir,
-                                                str(test_index) + TFR_SUFFIX)
-                        test_index += 1
-                    write_tfr(tfr_file, cat_id, target_wv, unlabeled_wv,
-                              labeled_p)
+                        test_set.extend(pages)
                     ind += 1
+
+    # shuffle all data
+    logging.info("\nshuffling train set")
+    shuffle(train_set)
+    logging.info("\nshuffling test set")
+    shuffle(test_set)
+
+    logging.info("\nwriting shuffled train data into json")
+    for i in range(math.ceil(len(train_set) / FLAGS.pages_per_file)):
+        head = i * FLAGS.pages_per_file
+        tail = (i + 1) * FLAGS.pages_per_file
+        if tail > len(train_set):
+            tail = -1
+        p = os.path.join(shuf_dir, str(i) + ".train")
+        write_json(p, train_set[head:tail])
+
+    logging.info("\nwriting shuffled test data into json")
+    for i in range(math.ceil(len(test_set) / FLAGS.pages_per_file)):
+        head = i * FLAGS.pages_per_file
+        tail = (i + 1) * FLAGS.pages_per_file
+        if tail > len(test_set):
+            tail = -1
+        p = os.path.join(shuf_dir, str(i) + ".test")
+        write_json(p, test_set[head:tail])
+
+    # local variables
+    dmoz_conn = DmozDB(FLAGS.dmoz_db)
+    wv_conn = WvDB(FLAGS.wv_db)
+    train_index = 0
+    test_index = 0
+
+    # reading json and convert to TFRecords
+    logging.info('\n\nconverting to TFRecords')
+    for s_file in os.listdir(shuf_dir):
+        j_path = os.path.join(shuf_dir, s_file)
+        if os.path.isfile(j_path) and not s_file.startswith('.'):
+            logging.info('')
+            logging.info('train:{}, test:{}'.format(train_index, test_index))
+            # read single html json file
+            pages = read_json(j_path)
+
+            # check labeled relative nodes by looking up dmoz DB
+            target_p, unlabeled_p, labeled_p, labels = split_pages(pages,
+                                                                   dmoz_conn)
+
+            # map word to word vector by looking up WE DB
+            target_wv, unlabeled_wv = convert_wv(target_p, unlabeled_p,
+                                                 wv_conn)
+
+            # write to a single TFRecords file
+            if s_file.endswith(".train"):
+                tfr_file = os.path.join(train_dir,
+                                        str(train_index) + TFR_SUFFIX)
+                train_index += 1
+            elif s_file.endswith(".test"):
+                tfr_file = os.path.join(test_dir, str(test_index) + TFR_SUFFIX)
+                test_index += 1
+            else:
+                raise ValueError("wrong s_file")
+
+            write_tfr(tfr_file, labels, target_wv, unlabeled_wv, labeled_p)
 
     dmoz_conn.close()
     wv_conn.close()

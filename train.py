@@ -240,8 +240,10 @@ def main(argv=None):
         model_type = models.rnn.RNN
     elif FLAGS.model_type == "rrnn":
         model_type = models.rrnn.RRNN
+    # elif FLAGS.model_type == "presnn":
+    #     model_type = models.pre_resnn.PreResNN
     else:
-        raise ValueError("wrong model_name:" + FLAGS.mode)
+        raise ValueError("wrong model_name:" + FLAGS.model_type)
 
     # core
     train(model_type)

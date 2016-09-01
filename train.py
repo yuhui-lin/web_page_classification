@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+import collections
 
 import numpy as np
 import tensorflow as tf
@@ -23,7 +24,7 @@ tf.app.flags.DEFINE_string(
 tf.app.flags.DEFINE_integer(
     "log_level", 20,
     "numeric value of logging level, 20 for info, 10 for debug.")
-tf.app.flags.DEFINE_boolean('if_eval', False,
+tf.app.flags.DEFINE_boolean('if_eval', True,
                             "Whether to log device placement.")
 
 # Training parameters
@@ -35,18 +36,14 @@ tf.app.flags.DEFINE_float("dropout_keep_prob", 0.5,
                           "Dropout keep probability (default: 0.5)")
 tf.app.flags.DEFINE_integer('max_steps', 1000000,
                             """Number of total batches to run.""")
-tf.app.flags.DEFINE_integer(
-    'num_epochs_per_decay', 20,
-    "number of epochs for every learning rate decay.")
-tf.app.flags.DEFINE_float(
-    "lr_decay_factor", 0.5,
-    "learning rate decay factor.")
-tf.app.flags.DEFINE_float(
-    "initial_lr", 0.01,
-    "inital learning rate.")
-tf.app.flags.DEFINE_integer(
-    'min_lr', 8,
-    "e^-8, minimum learning rate")
+
+# learning rate decay
+tf.app.flags.DEFINE_integer('num_epochs_per_decay', 10,
+                            "number of epochs for every learning rate decay.")
+tf.app.flags.DEFINE_float("lr_decay_factor", 0.1,
+                          "learning rate decay factor.")
+tf.app.flags.DEFINE_float("initial_lr", 0.1, "inital learning rate.")
+tf.app.flags.DEFINE_integer('min_lr', 6, "e^-8, minimum learning rate")
 
 # Misc Parameters
 tf.app.flags.DEFINE_boolean("allow_soft_placement", True,
@@ -65,10 +62,11 @@ tf.app.flags.DEFINE_integer(
 tf.app.flags.DEFINE_integer(
     'sleep', 0, "the number of seconds to sleep between steps. 0, 1, 2...")
 
-
 #########################################
 # global variables
 #########################################
+for attr, value in sorted(FLAGS.__flags.items()):
+    print("{}={}".format(attr, value))
 CUR_TIME = time.strftime("%Y-%m-%d_%H-%M-%S")
 TRAIN_FOLDER = FLAGS.model_type + '_' + CUR_TIME
 if FLAGS.data_dir == "data/":
@@ -78,6 +76,17 @@ else:
 # SUMMARY_DIR = os.path.join(TRAIN_DIR, "summaries")
 CHECKPOINT_DIR = os.path.join(TRAIN_DIR, "checkpoints")
 CHECKPOINT_PATH = os.path.join(CHECKPOINT_DIR, 'model.ckpt')
+
+# dataset default settings
+# see settings in main()
+DataConf = collections.namedtuple(
+    'DataConf', ['num_train', 'num_test', 'num_cats', 'tfr_folder'])
+DATA_CONF = {
+    'dmoz-5-2500': DataConf(2000, 500, 5, 'TFR_5-2500'),
+    'dmoz-5': DataConf(40000, 10000, 5, 'TFR_5'),
+    'dmoz-10': DataConf(40000, 10000, 10, 'TFR_10'),
+    'ukwa-10': DataConf(4000, 1000, 10, 'TFR_ukwa'),
+}
 
 #########################################
 # functions
@@ -104,12 +113,18 @@ def train(model_type):
                                  save_summaries_secs=0,
                                  save_model_secs=0)
 
+        logging.info("\n")
+        logging.info("start building Graph??? (This might take a while)")
+
         # Start running operations on the Graph.
         # sess = sv.prepare_or_wait_for_session()
         sess = sv.prepare_or_wait_for_session(config=tf.ConfigProto(
             allow_soft_placement=FLAGS.allow_soft_placement,
             log_device_placement=FLAGS.log_device_placement))
         # with sv.managed_session("") as sess:
+
+        logging.info("\n")
+        logging.info("start training...")
 
         try:
             while not sv.should_stop():
@@ -203,13 +218,23 @@ def set_logging(level=logging.INFO,
 
 def main(argv=None):
     print("start of main")
-
     # file handling
     if not os.path.isdir(FLAGS.outputs_dir):
         os.mkdir(FLAGS.outputs_dir)
         print("create outputs folder: {}".format(FLAGS.outputs_dir))
     # os.mkdir(TRAIN_DIR)
     os.makedirs(TRAIN_DIR)
+
+    # dataset settings !!!!!!!!!
+    # shouldn't in train.py,
+    # three options: 1. model or input, don't use FLAGS
+    # 2. dataset class like inception, or namedtuple
+    # 3. pass argument
+    data_conf = DATA_CONF[FLAGS.dataset]
+    FLAGS.num_train_examples = FLAGS.num_train_examples or data_conf.num_train
+    FLAGS.num_test_examples = FLAGS.num_test_examples or data_conf.num_test
+    FLAGS.num_cats = FLAGS.num_cats or data_conf.num_cats
+    FLAGS.tfr_folder = FLAGS.tfr_folder or data_conf.tfr_folder
 
     # loging
     log_file = os.path.join(TRAIN_DIR, "log.txt")

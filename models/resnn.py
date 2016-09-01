@@ -21,6 +21,43 @@ class ResNN(model.Model):
     """Residual neural network model.
     classify web page only based on target html."""
 
+    def model_conf(self):
+        # Configurations for each group
+        # several residual units (aka. bottleneck blocks) form a group
+        UnitsGroup = namedtuple(
+            'UnitsGroup',
+            [
+                'num_units',  # number of residual units
+                'num_ker',  # number of kernels for each convolution
+                'reduced_ker',  # number of reduced kernels
+                'is_downsample'  # (bool): downsample data using stride 2
+                # types of BottleneckBlock ??
+                # wide resnet kernel*k ??
+            ])
+        self.groups = [
+            UnitsGroup(3, 64, 16, True),
+            UnitsGroup(3, 128, 32, True),
+            UnitsGroup(3, 128, 64, True),
+            # UnitsGroup(6, 128, 64, True),
+        ]
+        # special first residual unit from P14 of (arxiv.org/abs/1603.05027)
+        self.special_first = False
+        # shortcut connection type: (arXiv:1512.03385)
+        # 0: 0-padding and average pooling
+        # 1: convolution projection only for increasing dimension
+        # 2: projection for all shortcut
+        self.shortcut = 0
+        # weight decay
+        self.weight_decay = 0.0001
+        # the type of residual unit
+        # 0: post-activation; 1: pre-activation
+        self.unit_type = 1
+        # RoR enable level 1
+        # requirement: every group is downsampling
+        self.ror_l1 = False
+        # RoR enable level 2
+        self.ror_l2 = False
+
     def BN_ReLU(self, net):
         # Batch Normalization and ReLU
         # 'gamma' is not used as the next layer is ReLU
@@ -30,6 +67,7 @@ class ResNN(model.Model):
                          activation_fn=tf.nn.relu, )
         # net = tf.nn.relu(net)
         # activation summary ??
+        self._activation_summary(net)
         return net
 
     def conv1d(self, net, num_ker, ker_size, stride):
@@ -139,44 +177,10 @@ class ResNN(model.Model):
             Logits.
         """
 
+        self.model_conf()
+
         # [batch_size, html_len, 1, we_dim]
         target_expanded = tf.expand_dims(sequences, 2)
-
-        # Configurations for each group
-        # several residual units (aka. bottleneck blocks) form a group
-        UnitsGroup = namedtuple(
-            'UnitsGroup',
-            [
-                'num_units',  # number of residual units
-                'num_ker',  # number of kernels for each convolution
-                'reduced_ker',  # number of reduced kernels
-                'is_downsample'  # (bool): downsample data using stride 2
-                # types of BottleneckBlock ??
-                # wide resnet kernel*k ??
-            ])
-        self.groups = [
-            UnitsGroup(3, 64, 16, True),
-            UnitsGroup(3, 128, 32, True),
-            UnitsGroup(3, 128, 64, True),
-            # UnitsGroup(6, 128, 64, True),
-        ]
-        # special first residual unit from P14 of (arxiv.org/abs/1603.05027)
-        self.special_first = False
-        # shortcut connection type: (arXiv:1512.03385)
-        # 0: 0-padding and average pooling
-        # 1: convolution projection only for increasing dimension
-        # 2: projection for all shortcut
-        self.shortcut = 0
-        # weight decay
-        self.weight_decay = 0.0001
-        # the type of residual unit
-        # 0: post-activation; 1: pre-activation
-        self.unit_type = 1
-        # RoR enable level 1
-        # requirement: every group is downsampling
-        self.ror_l1 = False
-        # RoR enable level 2
-        self.ror_l2 = False
 
         # First convolution
         with tf.variable_scope('conv_layer1'):

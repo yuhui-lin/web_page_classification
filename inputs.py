@@ -14,29 +14,33 @@ import tensorflow as tf
 FLAGS = tf.app.flags.FLAGS
 # parameters that related to read dataset will be kept here.
 
-# dataset parameters
 tf.app.flags.DEFINE_string(
     'data_dir', 'data/',
     'Directory to download data files and write the converted result')
-tf.app.flags.DEFINE_string('tfr_folder', 'TFR_test',
-                           'tfr folder name under data_dir')
 tf.app.flags.DEFINE_integer(
     'we_dim', 50, 'word embedding dimensionality. 50, 100, 150, 200...')
 tf.app.flags.DEFINE_integer(
     'num_read_threads', 5,
     'number of reading threads to shuffle examples between files.')
-tf.app.flags.DEFINE_integer(
-    "html_len", 200,
-    "the number of tokens in one html vector.")
-tf.app.flags.DEFINE_integer(
-    "num_cats", 10,
-    "the nuber of categories of dataset.")
-tf.app.flags.DEFINE_integer("num_train_examples", 200,
-                            "number of training examples per epoch.")
-tf.app.flags.DEFINE_integer("num_test_examples", 50,
-                            "number of testing examples per epoch.")
+tf.app.flags.DEFINE_integer("html_len", 256,
+                            "the number of tokens in one html vector.")
 tf.app.flags.DEFINE_integer("max_relatives", 20,
                             "maximum number of every kinds of relatives")
+
+# dataset specific settings
+tf.app.flags.DEFINE_string(
+    'dataset', 'dmoz-5-2500',
+    'dataset type, each dataset has its own default settings.')
+tf.app.flags.DEFINE_string(
+    'tfr_folder', '', 'overwrite the default tfr folder name under data_dir')
+tf.app.flags.DEFINE_integer("num_cats", 0,
+                            "overwrite the nuber of categories of dataset.")
+tf.app.flags.DEFINE_integer(
+    "num_train_examples", 0,
+    "overwrite the number of training examples per epoch.")
+tf.app.flags.DEFINE_integer(
+    "num_test_examples", 0,
+    "overwrite the number of testing examples per epoch.")
 
 #########################################
 # global variables

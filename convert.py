@@ -46,7 +46,7 @@ tf.app.flags.DEFINE_integer(
 # tf.app.flags.DEFINE_integer(
 #     "target_len", "200",
 #     'the max #tokens of node string, 100 for 512 characters string.')
-tf.app.flags.DEFINE_integer("html_len", "200",
+tf.app.flags.DEFINE_integer("html_len", "256",
                             'the number of tokens in one html string.')
 tf.app.flags.DEFINE_integer("num_train_f", "4",
                             'number of training files per category.')

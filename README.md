@@ -23,6 +23,8 @@ python -m convert --data_dir ~/Downloads/wpc --html_folder html_
 python -m convert --data_dir ~/Downloads/wpc --dataset_type dmoz --num_cats 5 --html_folder html_test 
 python -m convert --data_dir ~/Downloads/wpc --dataset_type dmoz --num_cats 5 --html_folder html_test --verbose False
 
+python -m train --data_dir ~/Downloads/wpc/ --dataset dmoz-5-2500 --model_type cnn
+python -m train --data_dir ~/Downloads/wpc/ --dataset dmoz-5-2500 --model_type resnn --if_eval False 
 python -m train --data_dir ~/Downloads/wpc/ --num_cats 5 --model_type cnn --tfr_folder TFR_5-2500
 python -m train --data_dir ~/Downloads/wpc/ --num_cats 5 --model_type cnn --tfr_folder TFR_5-2500 --if_eval True
 

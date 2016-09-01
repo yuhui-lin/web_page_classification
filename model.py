@@ -29,6 +29,7 @@ FLAGS = tf.app.flags.FLAGS
 # TOWER_NAME = 'tower'
 
 
+
 #########################################
 # functions
 #########################################
@@ -94,9 +95,12 @@ class Model(object):
         """
         # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
         # session. This helps the clarity of presentation on tensorboard.
-        tensor_name = re.sub('%s_[0-9]*/' % TOWER_NAME, '', x.op.name)
-        tf.histogram_summary(tensor_name + '/activations', x)
-        tf.scalar_summary(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
+        # Error: these summaries cause high classifier error!!!
+        # All inputs to node MergeSummary/MergeSummary must be from the same frame.
+
+        # tensor_name = re.sub('%s_[0-9]*/' % "tower", '', x.op.name)
+        # tf.histogram_summary(tensor_name + '/activations', x)
+        # tf.scalar_summary(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
 
     def _variable_on_cpu(self, name, shape, initializer):
         """Helper to create a Variable stored on CPU memory.
@@ -158,6 +162,58 @@ class Model(object):
         return
 
     def high_classifier(self, page_batch, low_classifier):
+        """high level classifier."""
+        target_batch, un_batch, un_len, la_batch, la_len = page_batch
+
+        with tf.variable_scope("low_classifier") as low_scope:
+            # [batch_size, 1, html_len, we_dim]
+            target_exp = tf.expand_dims(target_batch, 1)
+
+            un_rel = tf.sparse_tensor_to_dense(un_batch)
+            un_rel = tf.reshape(un_rel, [FLAGS.batch_size, -1, FLAGS.html_len,
+                                         FLAGS.we_dim])
+            # concat: unlabeled + target
+            un_and_target = tf.concat(1, [target_exp])
+            # un_and_target = tf.concat(1, [un_rel, target_exp])
+
+            # call low_classifier to classify relatives
+            # all relatives of one target composed of one batch
+            # ?? variable scope, init problem of low_classifier ???????
+            # [batch_size, num_len(variant) + 1, num_cats]
+            un_and_target = low_classifier(target_batch)
+            un_and_target = tf.expand_dims(un_and_target, 1)
+            # un_and_target = tf.map_fn(low_classifier, un_and_target, name="map_fn")
+
+        # labeled relatives
+        la_rel = tf.sparse_tensor_to_dense(la_batch)
+        la_rel = tf.reshape(la_rel, [FLAGS.batch_size, -1, FLAGS.num_cats])
+
+        # concat all inputs for high-level classifier RNN
+        # concat_inputs = tf.concat(1, [un_and_target])
+        concat_inputs = tf.concat(1, [la_rel, un_and_target])
+
+        # number of pages for each target
+        # num_pages = tf.ones([FLAGS.batch_size],
+        #                     dtype=tf.int32)
+        num_pages = tf.add(
+            # tf.add(un_len, la_len),
+            la_len,
+            tf.ones(
+                [FLAGS.batch_size],
+                dtype=tf.int32))
+
+
+        # high-level classifier - RNN
+        with tf.variable_scope("dynamic_rnn"):
+            cell = tf.nn.rnn_cell.GRUCell(num_units=FLAGS.num_cats)
+            outputs, state = tf.nn.dynamic_rnn(cell,
+                                               inputs=concat_inputs,
+                                               sequence_length=num_pages,
+                                               dtype=tf.float32)
+
+        return state
+
+    def a_high_classifier(self, page_batch, low_classifier):
         """high level classifier."""
         target_batch, un_batch, un_len, la_batch, la_len = page_batch
 
@@ -229,8 +285,9 @@ class Model(object):
 
         # The total loss is defined as the cross entropy loss plus all of the weight
         # decay terms (L2 loss).
-        return tf.add_n(tf.get_collection('REGULARIZATION_LOSSES'), name='total_loss')
-        # return cross_entropy_mean
+        total_loss = tf.add_n(tf.get_collection('REGULARIZATION_LOSSES'), name='total_loss')
+        self._add_loss_summaries(total_loss)
+        return total_loss
 
     def _add_loss_summaries(self, total_loss):
         """Add summaries for losses in CNN model.
@@ -241,20 +298,25 @@ class Model(object):
         Returns:
             loss_averages_op: op for generating moving averages of losses.
         """
-        # Compute the moving average of all individual losses and the total loss.
-        loss_averages = tf.train.ExponentialMovingAverage(0.9, name='avg')
-        losses = tf.get_collection('losses')
-        loss_averages_op = loss_averages.apply(losses + [total_loss])
+        # # Compute the moving average of all individual losses and the total loss.
+        # loss_averages = tf.train.ExponentialMovingAverage(0.9, name='avg')
+        # losses = tf.get_collection('losses')
+        # loss_averages_op = loss_averages.apply(losses + [total_loss])
+        #
+        # # Attach a scalar summary to all individual losses and the total loss; do the
+        # # same for the averaged version of the losses.
+        # for l in losses + [total_loss]:
+        #     # Name each loss as '(raw)' and name the moving average version of the loss
+        #     # as the original loss name.
+        #     tf.scalar_summary(l.op.name + ' (raw)', l)
+        #     tf.scalar_summary(l.op.name, loss_averages.average(l))
 
-        # Attach a scalar summary to all individual losses and the total loss; do the
-        # same for the averaged version of the losses.
-        for l in losses + [total_loss]:
-            # Name each loss as '(raw)' and name the moving average version of the loss
-            # as the original loss name.
-            tf.scalar_summary(l.op.name + ' (raw)', l)
-            tf.scalar_summary(l.op.name, loss_averages.average(l))
-
-        return loss_averages_op
+        losses = tf.get_collection('REGULARIZATION_LOSSES')
+        # all_losses = losses + [total_loss]
+        all_losses = [total_loss]
+        # is it necessary to add all REGULARIZATION_LOSSES ?????
+        for l in all_losses:
+            tf.scalar_summary(l.op.name, l)
 
     def training(self, total_loss, global_step):
         """Train CNN model.
@@ -269,9 +331,10 @@ class Model(object):
         """
         # Variables that affect learning rate.
         num_batches_per_epoch = FLAGS.num_train_examples / FLAGS.batch_size
+        print("num_batches_per_epoch: {}".format(num_batches_per_epoch))
         decay_steps = int(num_batches_per_epoch * self.NUM_EPOCHS_PER_DECAY)
+        print("decay_steps: {}".format(decay_steps))
 
-        print("decay_steps: ", decay_steps)
         # Decay the learning rate exponentially based on the number of steps.
         lr_decay = tf.train.exponential_decay(self.INITIAL_LEARNING_RATE,
                                               global_step,
@@ -282,40 +345,20 @@ class Model(object):
         lr = tf.maximum(lr_decay, self.min_lr)
         tf.scalar_summary('learning_rate', lr)
 
-        # Generate moving averages of all losses and associated summaries.
-        loss_averages_op = self._add_loss_summaries(total_loss)
-
-        # # Compute gradients.
-        # with tf.control_dependencies([loss_averages_op]):
-        #     # opt = tf.train.GradientDescentOptimizer(lr)
-        #     opt = tf.train.MomentumOptimizer(lr, 0.9)
-        #     grads = opt.compute_gradients(total_loss)
-        #
-        # # Apply gradients.
-        # apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
-        #
-        # # Add histograms for trainable variables.
-        # for var in tf.trainable_variables():
-        #     tf.histogram_summary(var.op.name, var)
-        #
-        # # Add histograms for gradients.
-        # for grad, var in grads:
-        #     if grad is not None:
-        #         tf.histogram_summary(var.op.name + '/gradients', grad)
-        #
-        # # # Track the moving averages of all trainable variables.
-        # # variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY,
-        # #                                                       global_step)
-        # # variables_averages_op = variable_averages.apply(tf.trainable_variables())
-        #
-        # with tf.control_dependencies([apply_gradient_op]):
-        #     train_op = tf.no_op(name='train')
-
-        # optimizer = tf.train.AdamOptimizer(1e-3)
-        optimizer = tf.train.AdamOptimizer(lr)
+        # optimizer = tf.train.AdamOptimizer(lr)
+        optimizer  = tf.train.MomentumOptimizer(lr, 0.9)
         grads_and_vars = optimizer.compute_gradients(total_loss)
         train_op = optimizer.apply_gradients(grads_and_vars,
                                              global_step=global_step)
+
+        # Add histograms for trainable variables.
+        for var in tf.trainable_variables():
+            tf.histogram_summary(var.op.name, var)
+
+        # Add histograms for gradients.
+        for grad, var in grads_and_vars :
+            if grad is not None:
+                tf.histogram_summary(var.op.name + '/gradients', grad)
 
         return train_op
 

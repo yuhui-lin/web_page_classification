@@ -37,6 +37,7 @@ class CNN(model.Model):
                                     name="conv")
                 # Apply nonlinearity
                 h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
+                self._activation_summary(h)
                 # Maxpooling over the outputs
                 pooled = tf.nn.max_pool(
                     h,

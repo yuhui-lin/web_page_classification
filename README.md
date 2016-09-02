@@ -19,8 +19,10 @@ python -m collect --data_dir ~/Downloads/wpc --pages_per_file 2000 --max_file_nu
 python -m collect --data_dir ~/Downloads/wpc --pages_per_file 1000 --max_file_num 5 --dataset_type dmoz --cat_num 10
 python -m collect --data_dir ~/Downloads/wpc --pages_per_file 100 --max_file_num 5 --dataset_type ukwa
 
-python -m convert --data_dir ~/Downloads/wpc --html_folder html_
-python -m convert --data_dir ~/Downloads/wpc --dataset_type dmoz --num_cats 5 --html_folder html_test 
+python -m convert --data_dir /media/yuhui/linux/wpc_data/ --dataset_type dmoz --num_cats 5 --html_folder html_5-2500
+python -m convert --data_dir ~/Downloads/wpc --dataset_type dmoz --num_cats 5 --html_folder html_5-2500
+python -m convert --data_dir ~/Downloads/wpc --dataset_type dmoz --num_cats 10 --html_folder html_10
+python -m convert --dataset_type dmoz --num_cats 10 --html_folder html_10
 python -m convert --data_dir ~/Downloads/wpc --dataset_type dmoz --num_cats 5 --html_folder html_test --verbose False
 
 python -m train --data_dir ~/Downloads/wpc/ --dataset dmoz-5-2500 --model_type cnn

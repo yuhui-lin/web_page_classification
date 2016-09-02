@@ -48,10 +48,13 @@ tf.app.flags.DEFINE_integer(
 #     'the max #tokens of node string, 100 for 512 characters string.')
 tf.app.flags.DEFINE_integer("html_len", "256",
                             'the number of tokens in one html string.')
-tf.app.flags.DEFINE_integer("num_train_f", "4",
-                            'number of training files per category.')
-tf.app.flags.DEFINE_integer("num_test_f", "1",
-                            'number of test files per category.')
+# tf.app.flags.DEFINE_integer("num_train_f", "4",
+#                             'number of training files per category.')
+# tf.app.flags.DEFINE_integer("num_test_f", "1",
+#                             'number of test files per category.')
+tf.app.flags.DEFINE_float("train_ratio", "0.8",
+                           'ratio of train in whole dataset')
+
 tf.app.flags.DEFINE_integer("max_workers", "8", 'max num of threads')
 tf.app.flags.DEFINE_string("dmoz_db", "dict", 'sqlite or dict')
 tf.app.flags.DEFINE_string("wv_db", "dict", 'sqlite or dict')
@@ -704,36 +707,29 @@ def main(argv):
 
     # shuffle all data thoroughly
     # all data stored in several train and test json files.
-    train_set = []
-    test_set = []
+    all_data = []
     logging.info('')
-    logging.info('reading all data, split into train and test')
+    logging.info('reading all data')
     for category in os.listdir(html_dir):
         cat_dir = os.path.join(html_dir, category)
         if os.path.isdir(cat_dir):
             cat_id = CATEGORIES.index(category)
-            ind = 0
             for j_file in os.listdir(cat_dir):
-                if ind < FLAGS.num_train_f + FLAGS.num_test_f and not j_file.startswith(
-                        '.'):
+                j_path = os.path.join(cat_dir, j_file)
+                if os.path.isfile(j_path) and not j_file.startswith('.'):
                     # read single html json file
-                    j_path = os.path.join(cat_dir, j_file)
                     pages = read_json(j_path)
                     for page in pages:
                         page['label'] = cat_id
-
-                    # write to a single TFRecords file
-                    if ind < FLAGS.num_train_f:
-                        train_set.extend(pages)
-                    else:
-                        test_set.extend(pages)
-                    ind += 1
+                    all_data.extend(pages)
 
     # shuffle all data
-    logging.info("\nshuffling train set")
-    shuffle(train_set)
-    logging.info("\nshuffling test set")
-    shuffle(test_set)
+    logging.info("\nshuffling the whole dataset")
+    shuffle(all_data)
+    logging.info("\nsplitting data into train and test set")
+    train_num = math.floor(len(all_data) * FLAGS.train_ratio)
+    train_set = all_data[:train_num]
+    test_set = all_data[train_num:]
 
     logging.info("\nwriting shuffled train data into json")
     for i in range(math.ceil(len(train_set) / FLAGS.pages_per_file)):
@@ -793,6 +789,8 @@ def main(argv):
     dmoz_conn.close()
     wv_conn.close()
 
+    logging.info("train_num: {}".format(train_num))
+    logging.info("test_num: {}".format(len(all_data) - train_num))
     print("\n end of main~~~")
 
 

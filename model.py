@@ -1,5 +1,4 @@
 """neural network model."""
-import re
 import math
 
 import tensorflow as tf
@@ -11,6 +10,7 @@ import inputs
 # FLAGS
 #########################################
 FLAGS = tf.app.flags.FLAGS
+
 # parameters applied for both train.py and eval.py will be kept here.
 # currently don't put any flag here
 # only in_top_k for both train and eval
@@ -27,7 +27,6 @@ FLAGS = tf.app.flags.FLAGS
 # to differentiate the operations. Note that this prefix is removed from the
 # names of the summaries when visualizing a model.
 # TOWER_NAME = 'tower'
-
 
 
 #########################################
@@ -81,7 +80,7 @@ class Model(object):
             self.top_k_op_eval = tf.nn.in_top_k(self.logits_eval,
                                                 label_batch_eval, 1)
             tf.scalar_summary(
-                "accuracy_eval",
+                "accuracy_eval (batch)",
                 tf.reduce_mean(tf.cast(self.top_k_op_eval, "float")))
 
     def _activation_summary(self, x):
@@ -173,18 +172,20 @@ class Model(object):
             un_rel = tf.reshape(un_rel, [FLAGS.batch_size, -1, FLAGS.html_len,
                                          FLAGS.we_dim])
             # concat: unlabeled + target
-            un_and_target = tf.concat(1, [target_exp])
-            # un_and_target = tf.concat(1, [un_rel, target_exp])
+            # un_and_target = tf.concat(1, [target_exp])
+            un_and_target = tf.concat(1, [un_rel, target_exp])
 
             # call low_classifier to classify relatives
             # all relatives of one target composed of one batch
             # ?? variable scope, init problem of low_classifier ???????
             # [batch_size, num_len(variant) + 1, num_cats]
-            un_and_target = low_classifier(target_batch)
-            un_and_target = tf.expand_dims(un_and_target, 1)
-            # un_and_target = tf.map_fn(low_classifier, un_and_target, name="map_fn")
+            un_and_target = tf.map_fn(low_classifier,
+                                      un_and_target,
+                                      name="map_fn")
+            # un_and_target = low_classifier(target_batch)
+            # un_and_target = tf.expand_dims(un_and_target, 1)
 
-        # labeled relatives
+            # labeled relatives
         la_rel = tf.sparse_tensor_to_dense(la_batch)
         la_rel = tf.reshape(la_rel, [FLAGS.batch_size, -1, FLAGS.num_cats])
 
@@ -196,12 +197,11 @@ class Model(object):
         # num_pages = tf.ones([FLAGS.batch_size],
         #                     dtype=tf.int32)
         num_pages = tf.add(
-            # tf.add(un_len, la_len),
-            la_len,
+            tf.add(un_len, la_len),
+            # la_len,
             tf.ones(
                 [FLAGS.batch_size],
                 dtype=tf.int32))
-
 
         # high-level classifier - RNN
         with tf.variable_scope("dynamic_rnn"):
@@ -285,7 +285,9 @@ class Model(object):
 
         # The total loss is defined as the cross entropy loss plus all of the weight
         # decay terms (L2 loss).
-        total_loss = tf.add_n(tf.get_collection('REGULARIZATION_LOSSES'), name='total_loss')
+        total_loss = tf.add_n(
+            tf.get_collection('REGULARIZATION_LOSSES'),
+            name='total_loss')
         self._add_loss_summaries(total_loss)
         return total_loss
 
@@ -346,7 +348,7 @@ class Model(object):
         tf.scalar_summary('learning_rate', lr)
 
         # optimizer = tf.train.AdamOptimizer(lr)
-        optimizer  = tf.train.MomentumOptimizer(lr, 0.9)
+        optimizer = tf.train.MomentumOptimizer(lr, 0.9)
         grads_and_vars = optimizer.compute_gradients(total_loss)
         train_op = optimizer.apply_gradients(grads_and_vars,
                                              global_step=global_step)
@@ -356,7 +358,7 @@ class Model(object):
             tf.histogram_summary(var.op.name, var)
 
         # Add histograms for gradients.
-        for grad, var in grads_and_vars :
+        for grad, var in grads_and_vars:
             if grad is not None:
                 tf.histogram_summary(var.op.name + '/gradients', grad)
 

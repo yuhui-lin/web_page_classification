@@ -35,7 +35,7 @@ class ResNN(model.Model):
                 # wide resnet kernel*k ??
             ])
         self.groups = [
-            UnitsGroup(3, 64, 16, True),
+            UnitsGroup(6, 64, 16, True),
             UnitsGroup(3, 128, 32, True),
             UnitsGroup(3, 128, 64, True),
             # UnitsGroup(6, 128, 64, True),
@@ -198,14 +198,14 @@ class ResNN(model.Model):
         if self.ror_l1:
             net_l1 = net
         for group_i, group in enumerate(self.groups):
+            if self.ror_l2:
+                net_l2 = net
             for unit_i in range(group.num_units):
-                if self.ror_l2:
-                    net_l2 = net
                 net = self.residual_unit(net, group_i, unit_i)
-                if self.ror_l2:
-                    net_l2 = self.conv1d(net_l2, self.groups[group_i].num_ker,
+            if self.ror_l2:
+                net_l2 = self.conv1d(net_l2, self.groups[group_i].num_ker,
                                          1, 2)
-                    net = net + net_l2
+                net = net + net_l2
         if self.ror_l1:
             net_l1 = self.conv1d(net_l1, self.groups[-1].num_ker, 1,
                                  len(self.groups))

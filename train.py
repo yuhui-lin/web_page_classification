@@ -38,12 +38,12 @@ tf.app.flags.DEFINE_integer('max_steps', 1000000,
                             """Number of total batches to run.""")
 
 # learning rate decay
-tf.app.flags.DEFINE_integer('num_epochs_per_decay', 10,
+tf.app.flags.DEFINE_integer('num_epochs_per_decay', 20,
                             "number of epochs for every learning rate decay.")
 tf.app.flags.DEFINE_float("lr_decay_factor", 0.1,
                           "learning rate decay factor.")
 tf.app.flags.DEFINE_float("initial_lr", 0.1, "inital learning rate.")
-tf.app.flags.DEFINE_integer('min_lr', 6, "e^-8, minimum learning rate")
+tf.app.flags.DEFINE_integer('min_lr', 7, "e^-8, minimum learning rate")
 
 # Misc Parameters
 tf.app.flags.DEFINE_boolean("allow_soft_placement", True,

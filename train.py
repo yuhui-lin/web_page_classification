@@ -43,7 +43,7 @@ tf.app.flags.DEFINE_integer('num_epochs_per_decay', 20,
 tf.app.flags.DEFINE_float("lr_decay_factor", 0.1,
                           "learning rate decay factor.")
 tf.app.flags.DEFINE_float("initial_lr", 0.1, "inital learning rate.")
-tf.app.flags.DEFINE_integer('min_lr', 7, "e^-8, minimum learning rate")
+tf.app.flags.DEFINE_integer('min_lr', 8, "e^-8, minimum learning rate")
 
 # Misc Parameters
 tf.app.flags.DEFINE_boolean("allow_soft_placement", True,
@@ -57,7 +57,7 @@ tf.app.flags.DEFINE_integer('summary_step', 10,
 tf.app.flags.DEFINE_integer('checkpoint_step', 100,
                             """Number of steps to write checkpoint. """)
 tf.app.flags.DEFINE_integer(
-    'num_checkpoints', 10,
+    'num_checkpoints', 5,
     "Number of maximum checkpoints to keep. default: 10")
 tf.app.flags.DEFINE_integer(
     'sleep', 0, "the number of seconds to sleep between steps. 0, 1, 2...")

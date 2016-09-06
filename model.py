@@ -172,18 +172,18 @@ class Model(object):
             un_rel = tf.reshape(un_rel, [FLAGS.batch_size, -1, FLAGS.html_len,
                                          FLAGS.we_dim])
             # concat: unlabeled + target
-            # un_and_target = tf.concat(1, [target_exp])
-            un_and_target = tf.concat(1, [un_rel, target_exp])
+            un_and_target = tf.concat(1, [target_exp])
+            # un_and_target = tf.concat(1, [un_rel, target_exp])
 
             # call low_classifier to classify relatives
             # all relatives of one target composed of one batch
             # ?? variable scope, init problem of low_classifier ???????
             # [batch_size, num_len(variant) + 1, num_cats]
-            un_and_target = tf.map_fn(low_classifier,
-                                      un_and_target,
-                                      name="map_fn")
-            # un_and_target = low_classifier(target_batch)
-            # un_and_target = tf.expand_dims(un_and_target, 1)
+            # un_and_target = tf.map_fn(low_classifier,
+            #                           un_and_target,
+            #                           name="map_fn")
+            un_and_target = low_classifier(target_batch)
+            un_and_target = tf.expand_dims(un_and_target, 1)
 
             # labeled relatives
         la_rel = tf.sparse_tensor_to_dense(la_batch)
@@ -197,8 +197,8 @@ class Model(object):
         # num_pages = tf.ones([FLAGS.batch_size],
         #                     dtype=tf.int32)
         num_pages = tf.add(
-            tf.add(un_len, la_len),
-            # la_len,
+            # tf.add(un_len, la_len),
+            la_len,
             tf.ones(
                 [FLAGS.batch_size],
                 dtype=tf.int32))
@@ -206,7 +206,7 @@ class Model(object):
         # high-level classifier - RNN
         with tf.variable_scope("dynamic_rnn"):
             cell = tf.nn.rnn_cell.GRUCell(num_units=FLAGS.num_cats)
-            outputs, state = tf.nn.dynamic_rnn(cell,
+            outputs, state = tf.nn.dynamic_rnn(cell=cell,
                                                inputs=concat_inputs,
                                                sequence_length=num_pages,
                                                dtype=tf.float32)

@@ -35,7 +35,7 @@ class ResNN(model.Model):
                 # wide resnet kernel*k ??
             ])
         self.groups = [
-            UnitsGroup(6, 64, 16, True),
+            UnitsGroup(3, 64, 16, True),
             UnitsGroup(3, 128, 32, True),
             UnitsGroup(3, 128, 64, True),
             # UnitsGroup(6, 128, 64, True),
@@ -46,7 +46,7 @@ class ResNN(model.Model):
         # 0: 0-padding and average pooling
         # 1: convolution projection only for increasing dimension
         # 2: projection for all shortcut
-        self.shortcut = 0
+        self.shortcut = 1
         # weight decay
         self.weight_decay = 0.0001
         # the type of residual unit
@@ -56,7 +56,7 @@ class ResNN(model.Model):
         # requirement: every group is downsampling
         self.ror_l1 = False
         # RoR enable level 2
-        self.ror_l2 = False
+        self.ror_l2 = True
 
     def BN_ReLU(self, net):
         # Batch Normalization and ReLU
@@ -163,6 +163,7 @@ class ResNN(model.Model):
         elif self.shortcut == 1 and unit_i == 0 or self.shortcut == 2:
             # projection
             net = self.conv1d(net, group.num_ker, 1, stride1)
+            net = self.BN_ReLU(net)
 
         ### element-wise addition
         net = net + net_residual
@@ -194,21 +195,27 @@ class ResNN(model.Model):
                              strides=[1, 2, 1, 1],
                              padding='SAME')
 
-        # stacking Residual Units
         if self.ror_l1:
             net_l1 = net
+        # stacking Residual Units
         for group_i, group in enumerate(self.groups):
             if self.ror_l2:
                 net_l2 = net
+
             for unit_i in range(group.num_units):
                 net = self.residual_unit(net, group_i, unit_i)
+
             if self.ror_l2:
-                net_l2 = self.conv1d(net_l2, self.groups[group_i].num_ker,
-                                         1, 2)
+                net_l2 = self.conv1d(net_l2, self.groups[group_i].num_ker, 1,
+                                     2)
+                # this is necessary to prevent loss exploding
+                net_l2 = self.BN_ReLU(net_l2)
                 net = net + net_l2
+
         if self.ror_l1:
-            net_l1 = self.conv1d(net_l1, self.groups[-1].num_ker, 1,
-                                 len(self.groups))
+            net_l1 = self.conv1d(net_l1, self.groups[-1].num_ker, 1, 2
+                                 **len(self.groups))
+            net_l1 = self.BN_ReLU(net_l1)
             net = net + net_l1
 
         # an extra activation before average pooling

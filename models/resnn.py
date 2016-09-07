@@ -35,11 +35,13 @@ class ResNN(model.Model):
                 # wide resnet kernel*k ??
             ])
         self.groups = [
-            UnitsGroup(3, 64, 16, True),
-            UnitsGroup(3, 128, 32, True),
-            UnitsGroup(3, 128, 64, True),
+            UnitsGroup(4, 64, 32, True),
+            UnitsGroup(4, 128, 64, True),
+            UnitsGroup(4, 128, 128, True),
             # UnitsGroup(6, 128, 64, True),
         ]
+        # the middle conv window size of bottleneck: 3, 4, 5
+        self.bott_size = 5
         # special first residual unit from P14 of (arxiv.org/abs/1603.05027)
         self.special_first = False
         # shortcut connection type: (arXiv:1512.03385)
@@ -54,7 +56,7 @@ class ResNN(model.Model):
         self.unit_type = 1
         # RoR enable level 1
         # requirement: every group is downsampling
-        self.ror_l1 = False
+        self.ror_l1 = True
         # RoR enable level 2
         self.ror_l2 = True
 
@@ -139,7 +141,7 @@ class ResNN(model.Model):
                                  group.reduced_ker, 1, stride1, 0)
         # 3x1 convolution bottleneck
         net_residual = unit_conv(name + '/conv_bottleneck', net_residual,
-                                 group.reduced_ker, 3, 1, 1)
+                                 group.reduced_ker, self.bott_size, 1, 1)
         # 1x1 convolution responsible for restoring dimension
         net_residual = unit_conv(name + '/conv_restore', net_residual,
                                  group.num_ker, 1, 1, 2)
@@ -214,7 +216,7 @@ class ResNN(model.Model):
 
         if self.ror_l1:
             net_l1 = self.conv1d(net_l1, self.groups[-1].num_ker, 1, 2
-                                 **len(self.groups))
+                                **len(self.groups))
             net_l1 = self.BN_ReLU(net_l1)
             net = net + net_l1
 

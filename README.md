@@ -26,7 +26,7 @@ python -m convert --dataset_type dmoz --num_cats 10 --html_folder html_10
 python -m convert --data_dir ~/Downloads/wpc --dataset_type dmoz --num_cats 5 --html_folder html_test --verbose False
 
 python -m train --data_dir ~/Downloads/wpc/ --dataset dmoz-10 --model_type resnn --print_step 3 --summary_step 40 --checkpoint_step 500
-python -m train --data_dir /media/yuhui/linux/wpc_data/ --dataset dmoz-10 --model_type resnn  --print_step 3 --summary_step 50 --checkpoint_step 500
+python -m train --data_dir /media/yuhui/linux/wpc_data/ --dataset dmoz-10 --model_type resnn  --print_step 3 --summary_step 50 --checkpoint_step 300
 python -m train --data_dir ~/Downloads/wpc/ --dataset dmoz-5-2500 --model_type resnn --if_eval False 
 python -m train --data_dir ~/Downloads/wpc/ --dataset dmoz-10 --model_type resnn --print_step 2 --summary_step 50 -- checkpoint_step 1000
 

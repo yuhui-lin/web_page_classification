@@ -36,10 +36,14 @@ class ResNN(model.Model):
                 # wide resnet kernel*k ??
             ])
         self.groups = [
-            UnitsGroup(3, 64, 32, True),
-            UnitsGroup(3, 128, 64, True),
-            UnitsGroup(3, 128, 128, True),
+            # UnitsGroup(3, 64, 32, True),
+            # UnitsGroup(3, 128, 64, True),
+            # UnitsGroup(3, 128, 128, True),
             # UnitsGroup(3, 256, 128, False),
+
+            # UnitsGroup(3, 128, 64, True),
+            UnitsGroup(3, 256, 128, True),
+            UnitsGroup(3, 512, 256, True),
         ]
         # the middle conv window size of bottleneck: 3, 4, 5
         self.bott_size = 5

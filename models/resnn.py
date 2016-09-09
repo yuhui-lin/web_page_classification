@@ -61,6 +61,8 @@ class ResNN(model.Model):
         self.ror_l1 = False
         # RoR enable level 2
         self.ror_l2 = True
+        # whether enable dropout before FC layer
+        self.dropout = True
 
         logging.info("ResNet hyper parameters:")
         logging.info(vars(self))
@@ -240,6 +242,11 @@ class ResNN(model.Model):
         net_shape = net.get_shape().as_list()
         softmax_len = net_shape[1] * net_shape[2] * net_shape[3]
         net = tf.reshape(net, [-1, softmax_len])
+
+        # add dropout
+        if self.dropout:
+            with tf.name_scope("dropout"):
+                net = tf.nn.dropout(net, FLAGS.dropout_keep_prob)
 
         # 1D-fully connected nueral network
         with tf.variable_scope('FC-layer'):

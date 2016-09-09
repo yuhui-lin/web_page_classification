@@ -1,5 +1,6 @@
 """pre-activation Residual network model class"""
 from collections import namedtuple
+import logging
 
 import tensorflow as tf
 from tensorflow.contrib.layers import convolution2d
@@ -35,30 +36,34 @@ class ResNN(model.Model):
                 # wide resnet kernel*k ??
             ])
         self.groups = [
-            UnitsGroup(4, 64, 32, True),
-            UnitsGroup(4, 128, 64, True),
-            UnitsGroup(4, 128, 128, True),
-            # UnitsGroup(6, 128, 64, True),
+            UnitsGroup(3, 64, 32, True),
+            UnitsGroup(3, 128, 64, True),
+            UnitsGroup(3, 128, 128, True),
+            # UnitsGroup(3, 256, 128, False),
         ]
         # the middle conv window size of bottleneck: 3, 4, 5
         self.bott_size = 5
         # special first residual unit from P14 of (arxiv.org/abs/1603.05027)
-        self.special_first = False
+        self.special_first = True
         # shortcut connection type: (arXiv:1512.03385)
         # 0: 0-padding and average pooling
         # 1: convolution projection only for increasing dimension
         # 2: projection for all shortcut
         self.shortcut = 1
         # weight decay
-        self.weight_decay = 0.0001
+        # self.weight_decay = 0.0001
+        self.weight_decay = 0.001
         # the type of residual unit
         # 0: post-activation; 1: pre-activation
         self.unit_type = 1
         # RoR enable level 1
         # requirement: every group is downsampling
-        self.ror_l1 = True
+        self.ror_l1 = False
         # RoR enable level 2
         self.ror_l2 = True
+
+        logging.info("ResNet hyper parameters:")
+        logging.info(vars(self))
 
     def BN_ReLU(self, net):
         # Batch Normalization and ReLU
@@ -164,8 +169,8 @@ class ResNN(model.Model):
                                  .format(group_i, unit_i))
         elif self.shortcut == 1 and unit_i == 0 or self.shortcut == 2:
             # projection
-            net = self.conv1d(net, group.num_ker, 1, stride1)
             net = self.BN_ReLU(net)
+            net = self.conv1d(net, group.num_ker, 1, stride1)
 
         ### element-wise addition
         net = net + net_residual
@@ -208,16 +213,16 @@ class ResNN(model.Model):
                 net = self.residual_unit(net, group_i, unit_i)
 
             if self.ror_l2:
-                net_l2 = self.conv1d(net_l2, self.groups[group_i].num_ker, 1,
-                                     2)
                 # this is necessary to prevent loss exploding
                 net_l2 = self.BN_ReLU(net_l2)
+                net_l2 = self.conv1d(net_l2, self.groups[group_i].num_ker, 1,
+                                     2)
                 net = net + net_l2
 
         if self.ror_l1:
-            net_l1 = self.conv1d(net_l1, self.groups[-1].num_ker, 1, 2
-                                **len(self.groups))
             net_l1 = self.BN_ReLU(net_l1)
+            net_l1 = self.conv1d(net_l1, self.groups[-1].num_ker, 1, 2
+                                 **len(self.groups))
             net = net + net_l1
 
         # an extra activation before average pooling

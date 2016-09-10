@@ -42,8 +42,9 @@ class ResNN(model.Model):
             # UnitsGroup(3, 256, 128, False),
 
             # UnitsGroup(3, 128, 64, True),
-            UnitsGroup(3, 256, 128, True),
-            UnitsGroup(3, 512, 256, True),
+            UnitsGroup(2, 512, 128, True),
+            UnitsGroup(2, 512, 256, True),
+            # UnitsGroup(1, 1024, 512, True),
         ]
         # the middle conv window size of bottleneck: 3, 4, 5
         self.bott_size = 5
@@ -60,6 +61,9 @@ class ResNN(model.Model):
         # the type of residual unit
         # 0: post-activation; 1: pre-activation
         self.unit_type = 1
+        # residual function: 0: bottleneck
+        # 1: basic two conv
+        self.residual_type = 1
         # RoR enable level 1
         # requirement: every group is downsampling
         self.ror_l1 = False
@@ -147,15 +151,23 @@ class ResNN(model.Model):
         else:
             raise ValueError("wrong residual unit type:{}".format(
                 self.unit_type))
-        # 1x1 convolution responsible for reducing dimension
-        net_residual = unit_conv(name + '/conv_reduce', net_residual,
-                                 group.reduced_ker, 1, stride1, 0)
-        # 3x1 convolution bottleneck
-        net_residual = unit_conv(name + '/conv_bottleneck', net_residual,
-                                 group.reduced_ker, self.bott_size, 1, 1)
-        # 1x1 convolution responsible for restoring dimension
-        net_residual = unit_conv(name + '/conv_restore', net_residual,
-                                 group.num_ker, 1, 1, 2)
+        if self.residual_type == 0:
+            # 1x1 convolution responsible for reducing dimension
+            net_residual = unit_conv(name + '/conv_reduce', net_residual,
+                                     group.reduced_ker, 1, stride1, 0)
+            # 3x1 convolution bottleneck
+            net_residual = unit_conv(name + '/conv_bottleneck', net_residual,
+                                     group.reduced_ker, self.bott_size, 1, 1)
+            # 1x1 convolution responsible for restoring dimension
+            net_residual = unit_conv(name + '/conv_restore', net_residual,
+                                     group.num_ker, 1, 1, 2)
+        elif self.residual_type == 1:
+            net_residual = unit_conv(name + '/conv_one', net_residual,
+                                     group.num_ker, self.bott_size, stride1, 0)
+            net_residual = unit_conv(name + '/conv_two', net_residual,
+                                     group.num_ker, self.bott_size, 1, 1)
+        else:
+            raise ValueError("residual_type error")
 
         ### shortcut connection
         num_ker_in = utils.last_dimension(net.get_shape(), min_rank=4)

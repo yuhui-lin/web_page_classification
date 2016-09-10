@@ -38,7 +38,7 @@ tf.app.flags.DEFINE_integer('max_steps', 1000000,
                             """Number of total batches to run.""")
 
 # learning rate decay
-tf.app.flags.DEFINE_integer('num_epochs_per_decay', 20,
+tf.app.flags.DEFINE_integer('num_epochs_per_decay', 15,
                             "number of epochs for every learning rate decay.")
 tf.app.flags.DEFINE_float("lr_decay_factor", 0.33,
                           "learning rate decay factor.")

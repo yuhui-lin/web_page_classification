@@ -44,7 +44,7 @@ class Model(object):
 
         if is_train:
             # build training graph
-            self.dropout = FLAGS.dropout_keep_prob
+            self.dropout_keep_prob = FLAGS.dropout_keep_prob
 
             self.global_step = tf.get_variable(
                 "global_step",
@@ -72,7 +72,7 @@ class Model(object):
             self.train_op = self.training(self.loss, self.global_step)
         else:
             # build eval graph
-            self.dropout = 1
+            self.dropout_keep_prob = 1
 
             page_batch_eval, label_batch_eval = self.inputs_eval()
             self.logits_eval = self.inference(page_batch_eval)

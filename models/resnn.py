@@ -263,7 +263,7 @@ class ResNN(model.Model):
         # add dropout
         if self.dropout:
             with tf.name_scope("dropout"):
-                net = tf.nn.dropout(net, FLAGS.dropout_keep_prob)
+                net = tf.nn.dropout(net, self.dropout_keep_prob)
 
         # 1D-fully connected nueral network
         with tf.variable_scope('FC-layer'):

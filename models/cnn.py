@@ -54,7 +54,7 @@ class CNN(model.Model):
 
         # Add dropout
         with tf.variable_scope("dropout"):
-            h_drop = tf.nn.dropout(h_pool_flat, self.dropout)
+            h_drop = tf.nn.dropout(h_pool_flat, self.dropout_keep_prob)
 
         # softmax, i.e. softmax(WX + b)
         with tf.variable_scope('softmax_linear'):

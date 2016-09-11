@@ -36,14 +36,15 @@ class ResNN(model.Model):
                 # wide resnet kernel*k ??
             ])
         self.groups = [
-            # UnitsGroup(3, 64, 32, True),
-            # UnitsGroup(3, 128, 64, True),
+            UnitsGroup(3, 64, 32, True),
+            UnitsGroup(3, 128, 64, True),
             # UnitsGroup(3, 128, 128, True),
+            UnitsGroup(3, 256, 128, True),
             # UnitsGroup(3, 256, 128, False),
 
             # UnitsGroup(3, 128, 64, True),
-            UnitsGroup(2, 512, 128, True),
-            UnitsGroup(2, 512, 256, True),
+            # UnitsGroup(3, 512, 128, True),
+            # UnitsGroup(3, 512, 256, True),
             # UnitsGroup(1, 1024, 512, True),
         ]
         # the middle conv window size of bottleneck: 3, 4, 5
@@ -63,7 +64,7 @@ class ResNN(model.Model):
         self.unit_type = 1
         # residual function: 0: bottleneck
         # 1: basic two conv
-        self.residual_type = 1
+        self.residual_type = 0
         # RoR enable level 1
         # requirement: every group is downsampling
         self.ror_l1 = False

@@ -65,7 +65,7 @@ class ResNN(model.Model):
         self.unit_type = 1
         # residual function: 0: bottleneck
         # 1: basic two conv
-        self.residual_type = 0
+        self.residual_type = 1
         # RoR enable level 1
         # requirement: every group is downsampling
         self.ror_l1 = False

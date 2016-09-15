@@ -40,8 +40,8 @@ class ResNN(model.Model):
             # UnitsGroup(3, 64, 32, True),
             # UnitsGroup(2, 128, 64, True),
             UnitsGroup(3, 256, 128, True),
-            UnitsGroup(3, 256, 256, True),
             UnitsGroup(3, 512, 256, True),
+            UnitsGroup(3, 1024, 256, True),
             # UnitsGroup(3, 256, 128, False),
 
             # UnitsGroup(3, 128, 64, True),

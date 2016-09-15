@@ -32,13 +32,13 @@ tf.app.flags.DEFINE_integer("batch_size", 128, "mini Batch Size (default: 64)")
 tf.app.flags.DEFINE_integer("in_top_k", 1, "compare the top n results.")
 tf.app.flags.DEFINE_integer("num_epochs", 120,
                             "Number of training epochs (default: 100)")
-tf.app.flags.DEFINE_float("dropout_keep_prob", 0.5,
+tf.app.flags.DEFINE_float("dropout_keep_prob", 0.7,
                           "Dropout keep probability (default: 0.5)")
 tf.app.flags.DEFINE_integer('max_steps', 1000000,
                             """Number of total batches to run.""")
 
 # learning rate decay
-tf.app.flags.DEFINE_integer('num_epochs_per_decay', 18,
+tf.app.flags.DEFINE_integer('num_epochs_per_decay', 10,
                             "number of epochs for every learning rate decay.")
 tf.app.flags.DEFINE_float("lr_decay_factor", 0.2,
                           "learning rate decay factor.")

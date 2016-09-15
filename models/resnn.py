@@ -59,6 +59,7 @@ class ResNN(model.Model):
         # weight decay
         # self.weight_decay = 0.0001
         self.weight_decay = 0.001
+        # self.weight_decay = 0.01
         # the type of residual unit
         # 0: post-activation; 1: pre-activation
         self.unit_type = 1
@@ -161,17 +162,18 @@ class ResNN(model.Model):
         if self.residual_type == 0:
             # 1x1 convolution responsible for reducing dimension
             net_residual = unit_conv(name + '/conv_reduce', net_residual,
-                                     group.reduced_ker, 1, stride1, 0)
+                                     group.reduced_ker, self.bott_size13, stride1, 0)
             # 3x1 convolution bottleneck
             net_residual = unit_conv(name + '/conv_bottleneck', net_residual,
                                      group.reduced_ker, self.bott_size, 1, 1)
             # 1x1 convolution responsible for restoring dimension
             net_residual = unit_conv(name + '/conv_restore', net_residual,
-                                     group.num_ker, 1, 1, 2)
+                                     group.num_ker, self.bott_size13, 1, 2)
         elif self.residual_type == 1:
             net_residual = unit_conv(name + '/conv_one', net_residual,
                                      group.num_ker, self.bott_size, stride1, 0)
-            if self.if_drop and unit_i == 0:
+            # if self.if_drop and unit_i == 0:
+            if self.if_drop:
                 with tf.name_scope("dropout"):
                     net_residual = tf.nn.dropout(net_residual, self.dropout_keep_prob)
             net_residual = unit_conv(name + '/conv_two', net_residual,

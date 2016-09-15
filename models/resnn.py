@@ -38,9 +38,9 @@ class ResNN(model.Model):
         self.groups = [
             # no more than three groups with downsampling
             # UnitsGroup(3, 64, 32, True),
-            UnitsGroup(3, 128, 64, True),
-            UnitsGroup(3, 256, 128, True),
-            UnitsGroup(3, 512, 256, True),
+            UnitsGroup(2, 256, 64, True),
+            UnitsGroup(2, 256, 128, True),
+            UnitsGroup(2, 512, 256, True),
             # UnitsGroup(3, 512, 256, True),
             # UnitsGroup(3, 256, 128, False),
 
@@ -58,8 +58,8 @@ class ResNN(model.Model):
         self.shortcut = 1
         # weight decay
         # self.weight_decay = 0.0001
-        self.weight_decay = 0.001
-        # self.weight_decay = 0.01
+        # self.weight_decay = 0.001
+        self.weight_decay = 0.01
         # the type of residual unit
         # 0: post-activation; 1: pre-activation
         self.unit_type = 1
@@ -78,7 +78,7 @@ class ResNN(model.Model):
         # whether enable dropout before FC layer
         self.dropout = True
         # whehter use dropout in residual function
-        self.if_drop = True
+        self.if_drop = False
 
         logging.info("ResNet hyper parameters:")
         logging.info(vars(self))

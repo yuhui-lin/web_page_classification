@@ -26,6 +26,8 @@ tf.app.flags.DEFINE_integer(
     "numeric value of logging level, 20 for info, 10 for debug.")
 tf.app.flags.DEFINE_boolean('if_eval', True,
                             "Whether to log device placement.")
+tf.app.flags.DEFINE_boolean('debug', False,
+                            "whether to print debug infor")
 
 # Training parameters
 tf.app.flags.DEFINE_integer("batch_size", 128, "mini Batch Size (default: 64)")
@@ -57,7 +59,7 @@ tf.app.flags.DEFINE_integer('summary_step', 10,
 tf.app.flags.DEFINE_integer('checkpoint_step', 100,
                             """Number of steps to write checkpoint. """)
 tf.app.flags.DEFINE_integer(
-    'num_checkpoints', 5,
+    'num_checkpoints', 1,
     "Number of maximum checkpoints to keep. default: 10")
 tf.app.flags.DEFINE_integer(
     'sleep', 0, "the number of seconds to sleep between steps. 0, 1, 2...")

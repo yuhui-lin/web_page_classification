@@ -55,6 +55,8 @@ class Model(object):
 
             # get input data
             page_batch, label_batch = self.inputs_train()
+            if FLAGS.debug:
+                label_batch = tf.Print(label_batch, [label_batch], message='\nlabel_batch:', summarize=128)
 
             # Build a Graph that computes the logits predictions from the
             self.logits = self.inference(page_batch)
@@ -161,7 +163,15 @@ class Model(object):
         return
 
     def high_classifier(self, page_batch, low_classifier):
-        """high level classifier."""
+        """high level classifier.
+        category vectors are fed into RNN by the order:
+            unlabeled_rel -> labeld_rel -> target
+        two options to concat variable-length relatives:
+            1. concat (un_rel, la_rel, target) by tf.scatter_update??
+                or tf.slice, complex
+            2. concat multiple dynamic_rnn, by passing the previouse final state
+
+        """
         target_batch, un_batch, un_len, la_batch, la_len = page_batch
 
         # with tf.variable_scope("low_classifier") as low_scope:
@@ -190,27 +200,49 @@ class Model(object):
         # labeled relatives
         la_rel = tf.sparse_tensor_to_dense(la_batch)
         la_rel = tf.reshape(la_rel, [FLAGS.batch_size, -1, FLAGS.num_cats])
+        if FLAGS.debug:
+            la_rel = tf.Print(la_rel, [la_len, la_rel], message='\nla_rel:', summarize=100)
 
         # concat all inputs for high-level classifier RNN
         # concat_inputs = tf.concat(1, [un_and_target])
-        concat_inputs = tf.concat(1, [la_rel, un_and_target])
+        # concat_inputs = tf.concat(1, [la_rel, un_and_target])
+        # concat_inputs = tf.concat(1, [un_and_target, la_rel])
+        # if FLAGS.debug:
+        #     concat_inputs = tf.Print(concat_inputs, [la_len, concat_inputs], message='\nconcat:', summarize=100)
 
         # number of pages for each target
         # num_pages = tf.ones([FLAGS.batch_size],
         #                     dtype=tf.int32)
-        num_pages = tf.add(
-            # tf.add(un_len, la_len),
-            la_len,
-            tf.ones(
+        # num_pages = tf.add(
+        #     # tf.add(un_len, la_len),
+        #     la_len,
+        #     tf.ones(
+        #         [FLAGS.batch_size],
+        #         dtype=tf.int32))
+        target_len = tf.ones(
                 [FLAGS.batch_size],
-                dtype=tf.int32))
+                dtype=tf.int32)
 
         # high-level classifier - RNN
-        with tf.variable_scope("dynamic_rnn"):
+        with tf.variable_scope("dynamic_rnn") as rnn_scope:
             cell = tf.nn.rnn_cell.GRUCell(num_units=FLAGS.num_cats)
+            state = None
+            # outputs, state = tf.nn.dynamic_rnn(cell=cell,
+            #                                    inputs=concat_inputs,
+            #                                    sequence_length=num_pages,
+            #                                    dtype=tf.float32)
             outputs, state = tf.nn.dynamic_rnn(cell=cell,
-                                               inputs=concat_inputs,
-                                               sequence_length=num_pages,
+                                               inputs=la_rel,
+                                               sequence_length=la_len,
+                                               initial_state=state,
+                                               dtype=tf.float32)
+            # reuse parameters for low_classifier
+            rnn_scope.reuse_variables()
+
+            outputs, state = tf.nn.dynamic_rnn(cell=cell,
+                                               inputs=un_and_target,
+                                               sequence_length=target_len,
+                                               initial_state=state,
                                                dtype=tf.float32)
 
         # [batch_size, num_cats]

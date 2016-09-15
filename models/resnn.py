@@ -39,17 +39,16 @@ class ResNN(model.Model):
             # no more than three groups with downsampling
             # UnitsGroup(3, 64, 32, True),
             # UnitsGroup(2, 128, 64, True),
-            # UnitsGroup(2, 256, 128, True),
-            # UnitsGroup(2, 256, 256, True),
+            UnitsGroup(3, 256, 128, True),
+            UnitsGroup(3, 256, 256, True),
+            UnitsGroup(3, 512, 256, True),
             # UnitsGroup(3, 256, 128, False),
 
             # UnitsGroup(3, 128, 64, True),
-            UnitsGroup(2, 512, 128, True),
-            UnitsGroup(2, 1024, 256, True),
+            # UnitsGroup(1, 1024, 128, True),
+            # UnitsGroup(1, 1024, 256, True),
             # UnitsGroup(1, 1024, 512, True),
         ]
-        # the middle conv window size of bottleneck: 3, 4, 5
-        self.bott_size = 5
         # special first residual unit from P14 of (arxiv.org/abs/1603.05027)
         self.special_first = True
         # shortcut connection type: (arXiv:1512.03385)
@@ -66,6 +65,10 @@ class ResNN(model.Model):
         # residual function: 0: bottleneck
         # 1: basic two conv
         self.residual_type = 1
+        # the middle conv window size of bottleneck: 3, 4, 5
+        self.bott_size = 5
+        # window size of first and third conv in bottleneck
+        self.bott_size13 = 3
         # RoR enable level 1
         # requirement: every group is downsampling
         self.ror_l1 = False
@@ -73,6 +76,8 @@ class ResNN(model.Model):
         self.ror_l2 = True
         # whether enable dropout before FC layer
         self.dropout = True
+        # whehter use dropout in residual function
+        self.if_drop = True
 
         logging.info("ResNet hyper parameters:")
         logging.info(vars(self))
@@ -166,6 +171,9 @@ class ResNN(model.Model):
         elif self.residual_type == 1:
             net_residual = unit_conv(name + '/conv_one', net_residual,
                                      group.num_ker, self.bott_size, stride1, 0)
+            if self.if_drop and unit_i == 0:
+                with tf.name_scope("dropout"):
+                    net_residual = tf.nn.dropout(net_residual, self.dropout_keep_prob)
             net_residual = unit_conv(name + '/conv_two', net_residual,
                                      group.num_ker, self.bott_size, 1, 1)
         else:
@@ -212,7 +220,7 @@ class ResNN(model.Model):
 
         # First convolution
         with tf.variable_scope('conv_layer1'):
-            net = self.conv1d(target_expanded, self.groups[0].num_ker, 6, 2)
+            net = self.conv1d(target_expanded, self.groups[0].num_ker, 7, 2)
             # if self.special_first:
             net = self.BN_ReLU(net)
 

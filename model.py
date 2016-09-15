@@ -164,7 +164,8 @@ class Model(object):
         """high level classifier."""
         target_batch, un_batch, un_len, la_batch, la_len = page_batch
 
-        with tf.variable_scope("low_classifier") as low_scope:
+        # with tf.variable_scope("low_classifier") as low_scope:
+        with tf.variable_scope("low_classifier"):
             # [batch_size, 1, html_len, we_dim]
             target_exp = tf.expand_dims(target_batch, 1)
 
@@ -183,9 +184,10 @@ class Model(object):
             #                           un_and_target,
             #                           name="map_fn")
             un_and_target = low_classifier(target_batch)
+            un_and_target = tf.nn.softmax(un_and_target)
             un_and_target = tf.expand_dims(un_and_target, 1)
 
-            # labeled relatives
+        # labeled relatives
         la_rel = tf.sparse_tensor_to_dense(la_batch)
         la_rel = tf.reshape(la_rel, [FLAGS.batch_size, -1, FLAGS.num_cats])
 
@@ -211,6 +213,9 @@ class Model(object):
                                                sequence_length=num_pages,
                                                dtype=tf.float32)
 
+        # [batch_size, num_cats]
+        # outputs = tf.reduce_mean(outputs, 1)
+        # return outputs
         return state
 
     def a_high_classifier(self, page_batch, low_classifier):
@@ -313,7 +318,7 @@ class Model(object):
         #     tf.scalar_summary(l.op.name + ' (raw)', l)
         #     tf.scalar_summary(l.op.name, loss_averages.average(l))
 
-        losses = tf.get_collection('REGULARIZATION_LOSSES')
+        # losses = tf.get_collection('REGULARIZATION_LOSSES')
         # all_losses = losses + [total_loss]
         all_losses = [total_loss]
         # is it necessary to add all REGULARIZATION_LOSSES ?????

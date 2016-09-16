@@ -72,7 +72,7 @@ class ResNN(model.Model):
         self.bott_size13 = 3
         # RoR enable level 1
         # requirement: every group is downsampling
-        self.ror_l1 = False
+        self.ror_l1 = True
         # RoR enable level 2
         self.ror_l2 = True
         # whether enable dropout before FC layer
@@ -172,7 +172,8 @@ class ResNN(model.Model):
         elif self.residual_type == 1:
             net_residual = unit_conv(name + '/conv_one', net_residual,
                                      group.num_ker, self.bott_size, stride1, 0)
-            if self.if_drop and group_i == 2:
+            # if self.if_drop and group_i == 2:
+            if self.if_drop and unit_i == 0:
                 with tf.name_scope("dropout"):
                     net_residual = tf.nn.dropout(net_residual, self.dropout_keep_prob)
             net_residual = unit_conv(name + '/conv_two', net_residual,

@@ -38,15 +38,15 @@ class ResNN(model.Model):
         self.groups = [
             # no more than three groups with downsampling
             # UnitsGroup(3, 64, 32, True),
-            UnitsGroup(2, 256, 64, True),
-            UnitsGroup(2, 256, 128, True),
-            UnitsGroup(2, 512, 256, True),
+            # UnitsGroup(2, 256, 64, True),
+            # UnitsGroup(2, 256, 128, True),
+            # UnitsGroup(2, 512, 256, True),
             # UnitsGroup(3, 512, 256, True),
             # UnitsGroup(3, 256, 128, False),
 
             # UnitsGroup(3, 128, 64, True),
-            # UnitsGroup(1, 1024, 128, True),
-            # UnitsGroup(1, 1024, 256, True),
+            UnitsGroup(2, 512, 128, True),
+            UnitsGroup(2, 1024, 256, True),
             # UnitsGroup(1, 1024, 512, True),
         ]
         # special first residual unit from P14 of (arxiv.org/abs/1603.05027)
@@ -58,8 +58,8 @@ class ResNN(model.Model):
         self.shortcut = 1
         # weight decay
         # self.weight_decay = 0.0001
-        # self.weight_decay = 0.001
-        self.weight_decay = 0.01
+        self.weight_decay = 0.001
+        # self.weight_decay = 0.01
         # the type of residual unit
         # 0: post-activation; 1: pre-activation
         self.unit_type = 1
@@ -172,8 +172,7 @@ class ResNN(model.Model):
         elif self.residual_type == 1:
             net_residual = unit_conv(name + '/conv_one', net_residual,
                                      group.num_ker, self.bott_size, stride1, 0)
-            # if self.if_drop and unit_i == 0:
-            if self.if_drop:
+            if self.if_drop and group_i == 2:
                 with tf.name_scope("dropout"):
                     net_residual = tf.nn.dropout(net_residual, self.dropout_keep_prob)
             net_residual = unit_conv(name + '/conv_two', net_residual,

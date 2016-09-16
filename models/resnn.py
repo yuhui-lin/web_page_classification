@@ -45,8 +45,8 @@ class ResNN(model.Model):
             # UnitsGroup(3, 256, 128, False),
 
             # UnitsGroup(3, 128, 64, True),
-            UnitsGroup(2, 512, 128, True),
-            UnitsGroup(2, 1024, 256, True),
+            UnitsGroup(1, 512, 128, True),
+            UnitsGroup(1, 1024, 256, True),
             # UnitsGroup(1, 1024, 512, True),
         ]
         # special first residual unit from P14 of (arxiv.org/abs/1603.05027)
@@ -72,13 +72,13 @@ class ResNN(model.Model):
         self.bott_size13 = 3
         # RoR enable level 1
         # requirement: every group is downsampling
-        self.ror_l1 = True
+        self.ror_l1 = False
         # RoR enable level 2
-        self.ror_l2 = True
+        self.ror_l2 = False
         # whether enable dropout before FC layer
         self.dropout = True
         # whehter use dropout in residual function
-        self.if_drop = False
+        self.if_drop = True
 
         logging.info("ResNet hyper parameters:")
         logging.info(vars(self))
@@ -198,9 +198,10 @@ class ResNN(model.Model):
                 raise ValueError("illigal kernel numbers at group {} unit {}"
                                  .format(group_i, unit_i))
         elif self.shortcut == 1 and unit_i == 0 or self.shortcut == 2:
-            # projection
-            net = self.BN_ReLU(net)
-            net = self.conv1d(net, group.num_ker, 1, stride1)
+            with tf.variable_scope(name+'_sc'):
+                # projection
+                net = self.BN_ReLU(net)
+                net = self.conv1d(net, group.num_ker, 1, stride1)
 
         ### element-wise addition
         net = net + net_residual
@@ -257,7 +258,8 @@ class ResNN(model.Model):
 
         # an extra activation before average pooling
         if self.special_first:
-            net = self.BN_ReLU(net)
+            with tf.variable_scope('special_BN_ReLU'):
+                net = self.BN_ReLU(net)
 
         # padding should be VALID for global average pooling
         # output: batch*1*1*channels

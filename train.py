@@ -30,6 +30,8 @@ tf.app.flags.DEFINE_boolean('debug', False,
                             "whether to print debug infor")
 tf.app.flags.DEFINE_integer("debug_len", 200,
                             "length of debug info")
+tf.app.flags.DEFINE_boolean('add_mark', True,
+                            "whether to print debug infor")
 
 # Training parameters
 tf.app.flags.DEFINE_integer("num_epochs", 100,

@@ -198,6 +198,10 @@ class Model(object):
             # call low_classifier to classify relatives
             # all relatives of one target composed of one batch
             # ?? variable scope, init problem of low_classifier ???????
+            # not efficient!!! even un_len = 0, un_rel will still be classified.
+            # hope sth like: low_classifier(un_rel, un_len),
+            # map_fn(low_classifier, [un_rel, un_len])
+            # low_classifier slice input, classify and then pad output
             # -> [batch_size, un_len(max???), num_cats]
             un_rel = tf.map_fn(low_classifier, un_rel, name="map_fn_low")
             un_rel = tf.map_fn(tf.nn.softmax, un_rel, name="map_fn_sm")
@@ -216,6 +220,23 @@ class Model(object):
                               message='\nla_rel:',
                               summarize=FLAGS.debug_len)
 
+        def add_mark(rnn_inputs, mark_types, mark):
+            """add a mark to the end of cat vectory,
+            to distinguish la_rel, un_rel, target.
+            """
+            m = [0] * mark_types
+            m[mark] = 1
+            m = tf.constant(m, dtype=tf.float32)
+            m = tf.expand_dims(m, 0)
+            m = tf.expand_dims(m, 0)
+            # sh = rnn_inputs.get_shape()
+            sha = tf.shape(rnn_inputs)
+            # [1, 1, mark_types] -> [batch_size, N, mark_types]
+            m = tf.tile(m, [sha[0], sha[1], 1])
+            ret = tf.concat(2, [rnn_inputs, m])
+            ret = tf.reshape(ret, [sha[0], sha[1], FLAGS.num_cats+mark_types])
+            return ret
+
         # high-level classifier - RNN
         with tf.variable_scope("dynamic_rnn") as rnn_scope:
             cell = tf.nn.rnn_cell.GRUCell(num_units=FLAGS.num_cats)
@@ -224,6 +245,15 @@ class Model(object):
             #                                    inputs=concat_inputs,
             #                                    sequence_length=num_pages,
             #                                    dtype=tf.float32)
+            if FLAGS.add_mark:
+                la_rel = add_mark(la_rel, 3, 0)
+                un_rel = add_mark(un_rel, 3, 1)
+                target_cats = add_mark(target_cats, 3, 2)
+                if FLAGS.debug:
+                    target_cats = tf.Print(target_cats,
+                                        [la_rel, un_rel, target_cats],
+                                        message='\nadd_mark):',
+                                        summarize=FLAGS.debug_len)
             outputs, state = tf.nn.dynamic_rnn(cell=cell,
                                                inputs=la_rel,
                                                sequence_length=la_len,

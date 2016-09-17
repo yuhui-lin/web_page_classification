@@ -45,8 +45,8 @@ class ResNN(model.Model):
             # UnitsGroup(3, 256, 128, False),
 
             # UnitsGroup(3, 128, 64, True),
-            UnitsGroup(1, 256, 128, True),
-            UnitsGroup(1, 512, 256, True),
+            UnitsGroup(1, 258, 128, True),
+            # UnitsGroup(2, 512, 256, True),
             # UnitsGroup(1, 1024, 512, True),
         ]
         # special first residual unit from P14 of (arxiv.org/abs/1603.05027)

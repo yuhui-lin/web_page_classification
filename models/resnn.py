@@ -45,9 +45,9 @@ class ResNN(model.Model):
             # UnitsGroup(3, 256, 128, False),
 
             # UnitsGroup(3, 128, 64, True),
-            UnitsGroup(1, 258, 128, True),
-            # UnitsGroup(2, 512, 256, True),
-            # UnitsGroup(1, 1024, 512, True),
+            # UnitsGroup(2, 258, 128, True),
+            UnitsGroup(2, 512, 256, True),
+            UnitsGroup(2, 1024, 512, True),
         ]
         # special first residual unit from P14 of (arxiv.org/abs/1603.05027)
         self.special_first = True
@@ -58,7 +58,7 @@ class ResNN(model.Model):
         self.shortcut = 1
         # weight decay
         # self.weight_decay = 0.0001
-        self.weight_decay = 0.001
+        self.weight_decay = 0.005
         # self.weight_decay = 0.01
         # the type of residual unit
         # 0: post-activation; 1: pre-activation

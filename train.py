@@ -34,7 +34,7 @@ tf.app.flags.DEFINE_boolean('add_mark', True,
                             "whether to print debug infor")
 
 # Training parameters
-tf.app.flags.DEFINE_integer("num_epochs", 100,
+tf.app.flags.DEFINE_integer("num_epochs", 150,
                             "Number of training epochs (default: 100)")
 tf.app.flags.DEFINE_integer("batch_size", 128, "mini Batch Size (default: 64)")
 tf.app.flags.DEFINE_integer("in_top_k", 1, "compare the top n results.")
@@ -44,7 +44,7 @@ tf.app.flags.DEFINE_integer('max_steps', 1000000,
                             """Number of total batches to run.""")
 
 # learning rate decay
-tf.app.flags.DEFINE_integer('num_epochs_per_decay', 5,
+tf.app.flags.DEFINE_integer('num_epochs_per_decay', 6,
                             "number of epochs for every learning rate decay.")
 tf.app.flags.DEFINE_float("lr_decay_factor", 0.5,
                           "learning rate decay factor.")
@@ -232,10 +232,11 @@ def main(argv=None):
     os.makedirs(TRAIN_DIR)
 
     # dataset settings !!!!!!!!!
-    # shouldn't in train.py,
+    # shouldn't in train.py, related to dataset and model class
     # three options: 1. model or input, don't use FLAGS
     # 2. dataset class like inception, or namedtuple
     # 3. pass argument
+    # don't use FLAGS, it only depends on dataset! fixed?? no!
     data_conf = DATA_CONF[FLAGS.dataset]
     FLAGS.num_train_examples = FLAGS.num_train_examples or data_conf.num_train
     FLAGS.num_test_examples = FLAGS.num_test_examples or data_conf.num_test

@@ -72,9 +72,9 @@ class ResNN(model.Model):
         self.bott_size13 = 1
         # RoR enable level 1
         # requirement: every group is downsampling
-        self.ror_l1 = False
+        self.ror_l1 = True
         # RoR enable level 2
-        self.ror_l2 = False
+        self.ror_l2 = True
         # whether enable dropout before FC layer
         self.dropout = True
         # whehter use dropout in residual function

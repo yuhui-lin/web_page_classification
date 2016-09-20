@@ -38,16 +38,16 @@ class ResNN(model.Model):
         self.groups = [
             # no more than three groups with downsampling
             # UnitsGroup(3, 64, 32, True),
-            # UnitsGroup(2, 256, 64, True),
-            # UnitsGroup(2, 256, 128, True),
-            # UnitsGroup(2, 512, 256, True),
+            UnitsGroup(2, 128, 64, True),
+            UnitsGroup(2, 256, 128, True),
+            UnitsGroup(2, 512, 256, True),
             # UnitsGroup(3, 512, 256, True),
             # UnitsGroup(3, 256, 128, False),
 
             # UnitsGroup(3, 128, 64, True),
             # UnitsGroup(2, 258, 128, True),
-            UnitsGroup(2, 512, 256, True),
-            UnitsGroup(2, 1024, 512, True),
+            # UnitsGroup(2, 512, 256, True),
+            # UnitsGroup(2, 1024, 512, True),
         ]
         # special first residual unit from P14 of (arxiv.org/abs/1603.05027)
         self.special_first = True
@@ -65,11 +65,11 @@ class ResNN(model.Model):
         self.unit_type = 1
         # residual function: 0: bottleneck
         # 1: basic two conv
-        self.residual_type = 1
+        self.residual_type = 0
         # the middle conv window size of bottleneck: 3, 4, 5
         self.bott_size = 5
         # window size of first and third conv in bottleneck
-        self.bott_size13 = 3
+        self.bott_size13 = 1
         # RoR enable level 1
         # requirement: every group is downsampling
         self.ror_l1 = False

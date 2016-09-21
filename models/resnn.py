@@ -246,7 +246,7 @@ class ResNN(model.Model):
             if self.ror_l2:
                 # this is necessary to prevent loss exploding
                 net_l2 = self.BN_ReLU(net_l2)
-                net_l2 = self.conv1d(net_l2, self.groups[group_i].num_ker, self.bott_size13
+                net_l2 = self.conv1d(net_l2, self.groups[group_i].num_ker, self.bott_size13,
                                      2)
                 net = net + net_l2
 

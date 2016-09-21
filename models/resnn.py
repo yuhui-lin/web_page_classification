@@ -58,7 +58,7 @@ class ResNN(model.Model):
         self.shortcut = 1
         # weight decay
         # self.weight_decay = 0.0001
-        self.weight_decay = 0.005
+        self.weight_decay = 0.01
         # self.weight_decay = 0.01
         # the type of residual unit
         # 0: post-activation; 1: pre-activation
@@ -69,10 +69,10 @@ class ResNN(model.Model):
         # the middle conv window size of bottleneck: 3, 4, 5
         self.bott_size = 5
         # window size of first and third conv in bottleneck
-        self.bott_size13 = 1
+        self.bott_size13 = 3
         # RoR enable level 1
         # requirement: every group is downsampling
-        self.ror_l1 = True
+        self.ror_l1 = False
         # RoR enable level 2
         self.ror_l2 = True
         # whether enable dropout before FC layer
@@ -246,13 +246,13 @@ class ResNN(model.Model):
             if self.ror_l2:
                 # this is necessary to prevent loss exploding
                 net_l2 = self.BN_ReLU(net_l2)
-                net_l2 = self.conv1d(net_l2, self.groups[group_i].num_ker, 1,
+                net_l2 = self.conv1d(net_l2, self.groups[group_i].num_ker, self.bott_size13
                                      2)
                 net = net + net_l2
 
         if self.ror_l1:
             net_l1 = self.BN_ReLU(net_l1)
-            net_l1 = self.conv1d(net_l1, self.groups[-1].num_ker, 1, 2
+            net_l1 = self.conv1d(net_l1, self.groups[-1].num_ker, self.bott_size13, 2
                                  **len(self.groups))
             net = net + net_l1
 

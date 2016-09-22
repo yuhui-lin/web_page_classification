@@ -13,12 +13,14 @@ from random import shuffle
 
 import numpy as np
 import tensorflow as tf
+import svm
 
 #########################################
 # FLAGS
 #########################################
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string("data_dir", "data/", 'path of data directory.')
+tf.app.flags.DEFINE_string("model", "FastText", 'path of data directory.')
 tf.app.flags.DEFINE_integer("num_cats", 5,
                             "the number of categories of dataset.")
 tf.app.flags.DEFINE_string("dataset_type", "ukwa", 'ukwa, dmoz, mcafee')
@@ -743,16 +745,20 @@ def main(argv):
     train_set = all_data[:train_num]
     test_set = all_data[train_num:]
 
-    logging.info("\nwriting shuffled train data into json")
-    with open(train_dir, 'w') as f:
-        f.write('\n'.join(train_set))
+    if FLAGS.model == 'svm':
+        svm.svm(FLAGS.num_cats, train_set, test_set)
+    else:
 
-    logging.info("\nwriting shuffled test data into json")
-    with open(test_dir, 'w') as f:
-        f.write('\n'.join(test_set))
+        logging.info("\nwriting shuffled train data into json")
+        with open(train_dir, 'w') as f:
+            f.write('\n'.join(train_set))
 
-    logging.info("train_num: {}".format(train_num))
-    logging.info("test_num: {}".format(len(all_data) - train_num))
+        logging.info("\nwriting shuffled test data into json")
+        with open(test_dir, 'w') as f:
+            f.write('\n'.join(test_set))
+
+        logging.info("train_num: {}".format(train_num))
+        logging.info("test_num: {}".format(len(all_data) - train_num))
     print("\n end of main~~~")
 
 

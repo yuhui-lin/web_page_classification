@@ -69,16 +69,16 @@ class ResNN(model.Model):
         # the middle conv window size of bottleneck: 3, 4, 5
         self.bott_size = 5
         # window size of first and third conv in bottleneck
-        self.bott_size13 = 3
+        self.bott_size13 = 1
         # RoR enable level 1
         # requirement: every group is downsampling
         self.ror_l1 = False
         # RoR enable level 2
-        self.ror_l2 = True
+        self.ror_l2 = False
         # whether enable dropout before FC layer
         self.dropout = True
         # whehter use dropout in residual function
-        self.if_drop = True
+        self.if_drop = False
 
         logging.info("ResNet hyper parameters:")
         logging.info(vars(self))

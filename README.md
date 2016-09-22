@@ -22,6 +22,7 @@ python -m collect --data_dir ~/Downloads/wpc --pages_per_file 100 --max_file_num
 python -m convert --data_dir /media/yuhui/linux/wpc_data/ --dataset_type dmoz --num_cats 5 --html_folder html_5
 python -m convert --data_dir ~/Downloads/wpc --dataset_type dmoz --num_cats 5 --html_folder html_5-2500
 python -m fastText_convert --data_dir ~/Downloads/wpc --dataset_type dmoz --num_cats 10 --html_folder html_10
+python -m fastText_convert --data_dir ~/Downloads/wpc --dataset_type dmoz --num_cats 10 --html_folder html_10 --model svm
 python -m convert --data_dir ~/Downloads/wpc --dataset_type dmoz --num_cats 10 --html_folder html_10
 python -m convert --dataset_type dmoz --num_cats 10 --html_folder html_10
 python -m convert --data_dir ~/Downloads/wpc --dataset_type dmoz --num_cats 5 --html_folder html_test --verbose False
@@ -42,6 +43,8 @@ python -m eval --data_dir ~/Downloads/wpc/ --model_type cnn --train_dir ~/Downlo
 ./fasttext supervised -input data/TFR_5-fast/train -output model5
 ./fasttext test model5.bin data/TFR_5-fast/test 1
 
+./fasttext supervised -input data/TFR_ukwa-fast/train -output model-ukwa
+./fasttext test model10.bin data/TFR_ukwa-fast/test 1
 ```
 
 

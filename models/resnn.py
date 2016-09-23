@@ -38,9 +38,9 @@ class ResNN(model.Model):
         self.groups = [
             # no more than three groups with downsampling
             # UnitsGroup(3, 64, 32, True),
-            UnitsGroup(2, 128, 64, True),
-            UnitsGroup(2, 256, 128, True),
-            UnitsGroup(2, 512, 256, True),
+            UnitsGroup(1, 1024, 512, True),
+            # UnitsGroup(2, 256, 128, True),
+            # UnitsGroup(2, 512, 256, True),
             # UnitsGroup(3, 512, 256, True),
             # UnitsGroup(3, 256, 128, False),
 

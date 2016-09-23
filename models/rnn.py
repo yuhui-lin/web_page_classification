@@ -6,7 +6,7 @@ import model
 # FLAGS
 #########################################
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_integer("num_rnn_layers", 3, "number of rnn layers")
+tf.app.flags.DEFINE_integer("num_rnn_layers", 2, "number of rnn layers")
 
 
 class RNN(model.Model):

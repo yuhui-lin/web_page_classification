@@ -6,6 +6,7 @@ import model
 # FLAGS
 #########################################
 FLAGS = tf.app.flags.FLAGS
+tf.app.flags.DEFINE_integer("num_rnn_layers", 3, "number of rnn layers")
 
 
 class RNN(model.Model):
@@ -21,7 +22,7 @@ class RNN(model.Model):
         """
         target_batch, unlabeled_batch, labeled_batch = page_batch
 
-        num_layers = 1
+        num_rnn_layers = 1
         hidden_layers = FLAGS.we_dim
         num_local = 1024
 
@@ -32,7 +33,7 @@ class RNN(model.Model):
 
         with tf.variable_scope("BiRNN_FW"):
             cell_fw = tf.nn.rnn_cell.GRUCell(hidden_layers)
-            cells_fw = tf.nn.rnn_cell.MultiRNNCell([cell_fw] * num_layers)
+            cells_fw = tf.nn.rnn_cell.MultiRNNCell([cell_fw] * num_rnn_layers)
             initial_state_fw = cells_fw.zero_state(FLAGS.batch_size,
                                                    tf.float32)
             outputs_fw, state_fw = tf.nn.rnn(cells_fw,
@@ -42,7 +43,7 @@ class RNN(model.Model):
 
         with tf.variable_scope("BiRNN_BW") as scope:
             cell_bw = tf.nn.rnn_cell.GRUCell(hidden_layers)
-            cells_bw = tf.nn.rnn_cell.MultiRNNCell([cell_bw] * num_layers)
+            cells_bw = tf.nn.rnn_cell.MultiRNNCell([cell_bw] * num_rnn_layers)
             initial_state_bw = cells_bw.zero_state(FLAGS.batch_size,
                                                    tf.float32)
             outputs_tmp, state_bw = tf.nn.rnn(cells_bw,
@@ -116,18 +117,18 @@ class RNN(model.Model):
 
         # [batch_size, html_len, we_dim] to
         # list[batch_size, we_dim], length:html_len
-        inputs_rnn = [tf.squeeze(input_, [1])
-                      for input_ in tf.split(1, FLAGS.html_len, sequences)]
+        # inputs_rnn = [tf.squeeze(input_, [1])
+        #               for input_ in tf.split(1, FLAGS.html_len, sequences)]
 
         with tf.variable_scope("RNN"):
             cell_fw = tf.nn.rnn_cell.GRUCell(self.hidden_layers)
-            cells_fw = tf.nn.rnn_cell.MultiRNNCell([cell_fw] * self.num_layers)
+            cells_fw = tf.nn.rnn_cell.MultiRNNCell([cell_fw] *
+                                                   FLAGS.num_rnn_layers)
             # initial_state_fw = cells_fw.zero_state(FLAGS.batch_size,
             #                                        tf.float32)
-            outputs_fw, state_fw = tf.nn.rnn(cells_fw,
-                                             inputs_rnn,
-                                             # initial_state=initial_state_fw,
-                                             dtype=tf.float32)
+            outputs_fw, state_fw = tf.nn.dynamic_rnn(cells_fw,
+                                                     inputs=sequences,
+                                                     dtype=tf.float32)
             # _activation_summary(outputs_fw)
 
         net_shape = state_fw.get_shape().as_list()
@@ -155,7 +156,6 @@ class RNN(model.Model):
         Returns:
             Logits.
         """
-        self.num_layers = 1
         self.hidden_layers = FLAGS.we_dim
 
         target_batch, un_batch, un_len, la_batch, la_len = page_batch

@@ -6,6 +6,11 @@ import model
 # FLAGS
 #########################################
 FLAGS = tf.app.flags.FLAGS
+tf.app.flags.DEFINE_string('filter_sizes', '3,4,5',
+                           'list of filter sizes.')
+tf.app.flags.DEFINE_integer(
+    "num_filters", 32,
+    "numeric value of logging level, 20 for info, 10 for debug.")
 
 
 class CNN(model.Model):
@@ -76,8 +81,9 @@ class CNN(model.Model):
         Returns:
             Logits.
         """
-        self.filter_sizes = [3, 4, 5]
-        self.num_filters = len(self.filter_sizes)
+        self.filter_sizes = [int(i) for i in FLAGS.filter_sizes.split(',')]
+        # self.num_filters = len(self.filter_sizes)
+        self.num_filters = FLAGS.num_filters
         self.sequence_length = FLAGS.html_len
 
         target_batch, un_batch, un_len, la_batch, la_len = page_batch

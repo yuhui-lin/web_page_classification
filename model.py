@@ -65,7 +65,7 @@ class Model(object):
             self.logits = self.inference(page_batch)
 
             # Calculate predictions.
-            self.top_k_op = tf.nn.in_top_k(self.logits, label_batch, 1)
+            self.top_k_op = tf.nn.in_top_k(self.logits, label_batch, FLAGS.in_top_k)
             tf.scalar_summary("accuracy",
                               tf.reduce_mean(tf.cast(self.top_k_op, "float")))
 
@@ -83,7 +83,7 @@ class Model(object):
             self.logits_eval = self.inference(page_batch_eval)
             # Calculate predictions.
             self.top_k_op_eval = tf.nn.in_top_k(self.logits_eval,
-                                                label_batch_eval, 1)
+                                                label_batch_eval, FLAGS.in_top_k_eval)
             tf.scalar_summary(
                 "accuracy_eval (batch)",
                 tf.reduce_mean(tf.cast(self.top_k_op_eval, "float")))

@@ -38,9 +38,9 @@ class ResNN(model.Model):
         self.groups = [
             # no more than three groups with downsampling
             # UnitsGroup(3, 64, 32, True),
-            UnitsGroup(1, 1024, 512, True),
-            # UnitsGroup(2, 256, 128, True),
-            # UnitsGroup(2, 512, 256, True),
+            # UnitsGroup(2, 1024, 512, True),
+            UnitsGroup(1, 256, 128, True),
+            UnitsGroup(1, 512, 256, True),
             # UnitsGroup(3, 512, 256, True),
             # UnitsGroup(3, 256, 128, False),
 
@@ -65,7 +65,7 @@ class ResNN(model.Model):
         self.unit_type = 1
         # residual function: 0: bottleneck
         # 1: basic two conv
-        self.residual_type = 0
+        self.residual_type = 1
         # the middle conv window size of bottleneck: 3, 4, 5
         self.bott_size = 5
         # window size of first and third conv in bottleneck

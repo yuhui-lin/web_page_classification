@@ -121,7 +121,8 @@ class RNN(model.Model):
         #               for input_ in tf.split(1, FLAGS.html_len, sequences)]
 
         with tf.variable_scope("RNN"):
-            cell_fw = tf.nn.rnn_cell.GRUCell(self.hidden_layers)
+            # cell_fw = tf.nn.rnn_cell.GRUCell(self.hidden_layers)
+            cell_fw = tf.nn.rnn_cell.BasicRNNCell(self.hidden_layers)
             cells_fw = tf.nn.rnn_cell.MultiRNNCell([cell_fw] *
                                                    FLAGS.num_rnn_layers)
             # initial_state_fw = cells_fw.zero_state(FLAGS.batch_size,

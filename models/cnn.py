@@ -9,7 +9,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('filter_sizes', '3,4,5',
                            'list of filter sizes.')
 tf.app.flags.DEFINE_integer(
-    "num_filters", 32,
+    "num_filters", 8,
     "numeric value of logging level, 20 for info, 10 for debug.")
 
 

@@ -10,6 +10,10 @@ import inputs
 # FLAGS
 #########################################
 FLAGS = tf.app.flags.FLAGS
+tf.app.flags.DEFINE_boolean('top_unlabel', True,
+                            "whether to use unlabeled feature in top rnn.")
+tf.app.flags.DEFINE_boolean('top_label', True,
+                            "whether to use labeled feature in top rnn.")
 
 # parameters applied for both train.py and eval.py will be kept here.
 # currently don't put any flag here
@@ -65,7 +69,8 @@ class Model(object):
             self.logits = self.inference(page_batch)
 
             # Calculate predictions.
-            self.top_k_op = tf.nn.in_top_k(self.logits, label_batch, FLAGS.in_top_k)
+            self.top_k_op = tf.nn.in_top_k(self.logits, label_batch,
+                                           FLAGS.in_top_k)
             tf.scalar_summary("accuracy",
                               tf.reduce_mean(tf.cast(self.top_k_op, "float")))
 
@@ -82,8 +87,8 @@ class Model(object):
             page_batch_eval, label_batch_eval = self.inputs_eval()
             self.logits_eval = self.inference(page_batch_eval)
             # Calculate predictions.
-            self.top_k_op_eval = tf.nn.in_top_k(self.logits_eval,
-                                                label_batch_eval, FLAGS.in_top_k_eval)
+            self.top_k_op_eval = tf.nn.in_top_k(
+                self.logits_eval, label_batch_eval, FLAGS.in_top_k_eval)
             tf.scalar_summary(
                 "accuracy_eval (batch)",
                 tf.reduce_mean(tf.cast(self.top_k_op_eval, "float")))
@@ -176,6 +181,133 @@ class Model(object):
         """
         target_batch, un_batch, un_len, la_batch, la_len = page_batch
 
+        def add_mark(rnn_inputs, mark_types, mark):
+            """add a mark to the end of cat vectory,
+            to distinguish la_rel, un_rel, target.
+            """
+            m = [0] * mark_types
+            m[mark] = 1
+            m = tf.constant(m, dtype=tf.float32)
+            m = tf.expand_dims(m, 0)
+            m = tf.expand_dims(m, 0)
+            # sh = rnn_inputs.get_shape()
+            sha = tf.shape(rnn_inputs)
+            # [1, 1, mark_types] -> [batch_size, N, mark_types]
+            m = tf.tile(m, [sha[0], sha[1], 1])
+            ret = tf.concat(2, [rnn_inputs, m])
+            ret = tf.reshape(ret, [sha[0], sha[1], FLAGS.num_cats + mark_types
+                                   ])
+            return ret
+
+        with tf.variable_scope("low_classifier"):
+            # [batch_size, html_len, we_dim] -> [batch_size, num_cats]
+            target_cats = low_classifier(target_batch)
+            target_cats = tf.nn.softmax(target_cats)
+            # [batch_size, 1, num_cats]
+            target_cats = tf.expand_dims(target_cats, 1)
+            target_len = tf.ones([FLAGS.batch_size], dtype=tf.int32)
+            if FLAGS.debug:
+                target_cats = tf.Print(target_cats,
+                                       [target_cats],
+                                       message='\ntarget_cats):',
+                                       summarize=FLAGS.debug_len)
+        # high-level classifier - RNN
+        with tf.variable_scope("dynamic_rnn"):
+            cell = tf.nn.rnn_cell.GRUCell(num_units=FLAGS.num_cats)
+            state = None
+            if FLAGS.add_mark:
+                target_cats = add_mark(target_cats, 3, 2)
+                if FLAGS.debug:
+                    target_cats = tf.Print(target_cats,
+                                           [target_cats],
+                                           message='\nadd_mark):',
+                                           summarize=FLAGS.debug_len)
+            outputs, state = tf.nn.dynamic_rnn(cell=cell,
+                                               inputs=target_cats,
+                                               sequence_length=target_len,
+                                               initial_state=state,
+                                               dtype=tf.float32)
+
+        if FLAGS.top_unlabel:
+            with tf.variable_scope("low_classifier", reuse=True):
+                un_rel = tf.sparse_tensor_to_dense(un_batch)
+                un_rel = tf.reshape(un_rel, [FLAGS.batch_size, -1,
+                                             FLAGS.html_len, FLAGS.we_dim])
+                # call low_classifier to classify relatives
+                # all relatives of one target composed of one batch
+                # ?? variable scope, init problem of low_classifier ???????
+                # not efficient!!! even un_len = 0, un_rel will still be classified.
+                # hope sth like: low_classifier(un_rel, un_len),
+                # map_fn(low_classifier, [un_rel, un_len])
+                # low_classifier slice input, classify and then pad output
+                un_rel = tf.transpose(un_rel, perm=[1, 0, 2, 3])
+                un_rel = tf.map_fn(low_classifier, un_rel, name="map_fn_low")
+                # -> [batch_size, un_len(max???), num_cats]
+                # dynamic_rnn set to time_major=True, do not need to transpose back
+                # un_rel = tf.transpose(un_rel, perm=[1, 0, 2])
+                un_rel = tf.map_fn(tf.nn.softmax, un_rel, name="map_fn_sm")
+                if FLAGS.debug:
+                    un_rel = tf.Print(un_rel,
+                                      [un_len, un_rel],
+                                      message='\nun_rel):',
+                                      summarize=FLAGS.debug_len)
+            # high-level classifier - RNN
+            with tf.variable_scope("dynamic_rnn", reuse=True):
+                if FLAGS.add_mark:
+                    un_rel = add_mark(un_rel, 3, 1)
+                    if FLAGS.debug:
+                        target_cats = tf.Print(target_cats,
+                                               [un_rel],
+                                               message='\nadd_mark):',
+                                               summarize=FLAGS.debug_len)
+                outputs, state = tf.nn.dynamic_rnn(cell=cell,
+                                                   time_major=True,
+                                                   inputs=un_rel,
+                                                   sequence_length=un_len,
+                                                   initial_state=state,
+                                                   dtype=tf.float32)
+
+        if FLAGS.top_label:
+            # labeled relatives
+            la_rel = tf.sparse_tensor_to_dense(la_batch)
+            la_rel = tf.reshape(la_rel, [FLAGS.batch_size, -1, FLAGS.num_cats])
+            if FLAGS.debug:
+                la_rel = tf.Print(la_rel,
+                                  [la_len, la_rel],
+                                  message='\nla_rel:',
+                                  summarize=FLAGS.debug_len)
+
+            # high-level classifier - RNN
+            with tf.variable_scope("dynamic_rnn", reuse=True):
+                if FLAGS.add_mark:
+                    la_rel = add_mark(la_rel, 3, 0)
+                    if FLAGS.debug:
+                        target_cats = tf.Print(target_cats,
+                                               [la_rel],
+                                               message='\nadd_mark):',
+                                               summarize=FLAGS.debug_len)
+                outputs, state = tf.nn.dynamic_rnn(cell=cell,
+                                                   inputs=la_rel,
+                                                   sequence_length=la_len,
+                                                   initial_state=state,
+                                                   dtype=tf.float32)
+
+        # [batch_size, num_cats]
+        # outputs = tf.reduce_mean(outputs, 1)
+        # return outputs
+        return state
+
+    def c_high_classifier(self, page_batch, low_classifier):
+        """high level classifier.
+        category vectors are fed into RNN by the order:
+            unlabeled_rel -> labeld_rel -> target
+        two options to concat variable-length relatives:
+            1. concat (un_rel, la_rel, target) by tf.scatter_update??
+                or tf.slice, complex
+            2. concat multiple dynamic_rnn, by passing the previouse final state
+        """
+        target_batch, un_batch, un_len, la_batch, la_len = page_batch
+
         with tf.variable_scope("low_classifier") as low_scope:
             # [batch_size, html_len, we_dim] -> [batch_size, num_cats]
             target_cats = low_classifier(target_batch)
@@ -234,7 +366,8 @@ class Model(object):
             # [1, 1, mark_types] -> [batch_size, N, mark_types]
             m = tf.tile(m, [sha[0], sha[1], 1])
             ret = tf.concat(2, [rnn_inputs, m])
-            ret = tf.reshape(ret, [sha[0], sha[1], FLAGS.num_cats+mark_types])
+            ret = tf.reshape(ret, [sha[0], sha[1], FLAGS.num_cats + mark_types
+                                   ])
             return ret
 
         # high-level classifier - RNN
@@ -251,9 +384,9 @@ class Model(object):
                 target_cats = add_mark(target_cats, 3, 2)
                 if FLAGS.debug:
                     target_cats = tf.Print(target_cats,
-                                        [la_rel, un_rel, target_cats],
-                                        message='\nadd_mark):',
-                                        summarize=FLAGS.debug_len)
+                                           [la_rel, un_rel, target_cats],
+                                           message='\nadd_mark):',
+                                           summarize=FLAGS.debug_len)
             outputs, state = tf.nn.dynamic_rnn(cell=cell,
                                                inputs=la_rel,
                                                sequence_length=la_len,

@@ -159,7 +159,26 @@ def maybe_download(data_dir, s_name, s_url):
         if s_ext == ".tar.gz":
             import tarfile
             with tarfile.open(s_packed, "r:*") as f:
-                f.extractall(s_dir)
+                def is_within_directory(directory, target):
+                    
+                    abs_directory = os.path.abspath(directory)
+                    abs_target = os.path.abspath(target)
+                
+                    prefix = os.path.commonprefix([abs_directory, abs_target])
+                    
+                    return prefix == abs_directory
+                
+                def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+                
+                    for member in tar.getmembers():
+                        member_path = os.path.join(path, member.name)
+                        if not is_within_directory(path, member_path):
+                            raise Exception("Attempted Path Traversal in Tar File")
+                
+                    tar.extractall(path, members, numeric_owner=numeric_owner) 
+                    
+                
+                safe_extract(f, s_dir)
         elif s_ext == ".bz2":
             # only single file!! need file name
             s = os.path.join(s_dir, os.path.basename(s_dir))
